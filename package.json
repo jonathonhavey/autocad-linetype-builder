@@ -1,0 +1,17 @@
+{
+  "name": "autocad-linetype-builder",
+  "version": "1.0.0",
+  "description": "AutoCAD Line Type Builder - Create custom .lin files",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx live-server",
+    "dev": "npx live-server --port=3000",
+    "build": "echo 'Build process not configured yet'"
+  },
+  "keywords": ["website", "html", "css", "javascript"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "live-server": "^1.2.2"
+  }
+}

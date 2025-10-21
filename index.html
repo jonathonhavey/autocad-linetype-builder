@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoCAD Line Type Builder</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <h1>AutoCAD Line Type Builder</h1>
+            <p>Create custom .lin files for AutoCAD line types</p>
+            <div class="file-menu">
+                <button class="file-menu-btn" onclick="toggleImportBar()">Import</button>
+            </div>
+        </nav>
+        <div class="import-bar" id="importBar" style="display: none;">
+            <button class="close-btn" onclick="closeImportBar()">×</button>
+            <div class="import-content">
+                <label for="importInput">Paste AutoCAD line type definition:</label>
+                <textarea id="importInput" rows="2" placeholder="e.g., *DASHED,Dashed line ---- ---- ----&#10;A,1,-0.5,0.25,-0.5"></textarea>
+                <div class="import-buttons">
+                    <button onclick="importFromText()">Import</button>
+                    <button onclick="closeImportBar()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="app-container">
+        <!-- Design Cards Section -->
+        <section class="design-section">
+            <div class="section-header">
+                <h2>Design Elements</h2>
+            </div>
+            <div class="cards-container" id="cardsContainer">
+                <!-- Cards will be added dynamically with plus buttons -->
+            </div>
+        </section>
+
+        <!-- Preview Section -->
+        <section class="preview-section">
+            <div class="section-header">
+                <h2>Preview</h2>
+                <div class="preview-controls">
+                    <div class="shape-selector">
+                        <label for="shapeSelect">Shape:</label>
+                        <select id="shapeSelect" onchange="lineTypeBuilder.changePreviewShape(this.value)">
+                            <option value="line">Line</option>
+                            <option value="rectangle">Rectangle</option>
+                            <option value="circle">Circle</option>
+                            <option value="triangle">Triangle</option>
+                        </select>
+                    </div>
+
+                    <div class="line-weight-control">
+                        <label for="lineWeightSlider">Line Weight:</label>
+                        <input type="range" id="lineWeightSlider" min="0.5" max="5" step="0.1" value="1" 
+                               onchange="lineTypeBuilder.changeLineWeight(this.value)" 
+                               oninput="lineTypeBuilder.changeLineWeight(this.value)">
+                        <span id="lineWeightValue">1.0</span>
+                    </div>
+
+                    <div class="zoom-controls">
+                        <button onclick="lineTypeBuilder.zoomIn()" title="Zoom In">🔍+</button>
+                        <button onclick="lineTypeBuilder.zoomOut()" title="Zoom Out">🔍-</button>
+                        <button onclick="lineTypeBuilder.zoomExtents()" title="Zoom Extents (or double-click)">⌂</button>
+                        <button onclick="lineTypeBuilder.toggleTextGuides()" title="Toggle Text Positioning Guides" style="display: none;">📍</button>
+                    </div>
+                </div>
+            </div>
+            <div class="preview-window">
+                <div class="grid-background"></div>
+                <div class="preview-content">
+                    <!-- Line preview will be rendered here -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Settings and Output Section -->
+        <section class="output-section">
+            <div class="section-header">
+                <h2>Description and Export</h2>
+            </div>
+            
+            <div class="output-row">
+                <!-- Line Type Info -->
+                <div class="linetype-info">
+                    <div class="input-group">
+                        <label for="linetypeName">Line Type Name:</label>
+                        <input type="text" id="linetypeName" placeholder="MYLINETYPE" maxlength="31">
+                    </div>
+                    <div class="input-group">
+                        <label for="linetypeDesc">Description:</label>
+                        <input type="text" id="linetypeDesc" placeholder="Custom line type description">
+                    </div>
+                </div>
+
+                <!-- Generated Code -->
+                <div class="code-output">
+                    <h3>Generated .lin Code</h3>
+                    <textarea id="outputCode" readonly placeholder="Generated code will appear here..."></textarea>
+                    <div class="output-buttons">
+                        <button id="copyCodeBtn">Copy Code</button>
+                        <button id="downloadBtn">Download .lin File</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="js/script.js"></script>
+</body>
+</html>
