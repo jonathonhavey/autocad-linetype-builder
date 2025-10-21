@@ -6,7 +6,7 @@
   "scripts": {
     "start": "npx live-server",
     "dev": "npx live-server --port=3000",
-    "build": "echo 'Build process not configured yet'"
+    "build": "echo 'Static site - no build process needed'"
   },
   "keywords": ["website", "html", "css", "javascript"],
   "author": "",
