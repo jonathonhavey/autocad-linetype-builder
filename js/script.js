@@ -108,10 +108,49 @@ class LineTypeBuilder {
         `;
     }
 
+    // AutoCAD Line Type Validation Rules
+    validateFirstElement(type) {
+        // Rule 1: First element must be a dash (not dot, text, or zero-length dash)
+        if (this.elements.length === 0) {
+            if (type !== 'dash') {
+                this.showNotification('AutoCAD Requirement: First element must be a visible dash (not dot, text, or invisible dash)', 'error');
+                return false;
+            }
+        }
+        return true;
+    }
 
+    validateConsecutiveText() {
+        // Rule 2: Back-to-back text blocks are not allowed
+        if (this.elements.length > 0) {
+            const lastElement = this.elements[this.elements.length - 1];
+            return !(lastElement.type === 'text');
+        }
+        return true;
+    }
+
+    validateNewElement(type) {
+        // Check first element rule
+        if (!this.validateFirstElement(type)) {
+            return false;
+        }
+
+        // Check consecutive text rule
+        if (type === 'text' && !this.validateConsecutiveText()) {
+            this.showNotification('AutoCAD Requirement: Text elements cannot be placed back-to-back. Add a dash, gap, or dot between text elements.', 'error');
+            return false;
+        }
+
+        return true;
+    }
 
     addElement(type) {
         if (this.elements.length >= this.MAX_ELEMENTS) {
+            return;
+        }
+
+        // Validate AutoCAD requirements before adding
+        if (!this.validateNewElement(type)) {
             return;
         }
         
@@ -432,6 +471,30 @@ class LineTypeBuilder {
     changeElementType(id, newType) {
         const elementIndex = this.elements.findIndex(element => element.id === id);
         if (elementIndex !== -1) {
+            // Special validation for first element
+            if (elementIndex === 0 && newType !== 'dash') {
+                this.showNotification('AutoCAD Requirement: First element must be a dash', 'error');
+                // Reset the dropdown to the current type
+                this.renderCards();
+                return;
+            }
+
+            // Validate consecutive text elements
+            if (newType === 'text') {
+                // Check previous element
+                if (elementIndex > 0 && this.elements[elementIndex - 1].type === 'text') {
+                    this.showNotification('AutoCAD Requirement: Text elements cannot be placed back-to-back. Add a dash, gap, or dot between text elements.', 'error');
+                    this.renderCards();
+                    return;
+                }
+                // Check next element
+                if (elementIndex < this.elements.length - 1 && this.elements[elementIndex + 1].type === 'text') {
+                    this.showNotification('AutoCAD Requirement: Text elements cannot be placed back-to-back. Add a dash, gap, or dot between text elements.', 'error');
+                    this.renderCards();
+                    return;
+                }
+            }
+
             this.elements[elementIndex].type = newType;
             this.elements[elementIndex].value = this.getDefaultValue(newType);
             this.renderCards();
@@ -444,6 +507,17 @@ class LineTypeBuilder {
         if (elementIndex !== -1) {
             const element = this.elements[elementIndex];
             const numericLength = Math.abs(parseFloat(length) || 0);
+            
+            // Special validation for first element - cannot be zero length
+            if (elementIndex === 0 && numericLength === 0) {
+                this.showNotification('AutoCAD Requirement: First element must be a visible dash (length > 0)', 'error');
+                // Reset to minimum valid length
+                element.value = 0.1;
+                this.renderCards();
+                this.updateOutput();
+                return;
+            }
+            
             // Maintain visibility state while updating length
             const wasVisible = element.value >= 0;
             element.value = wasVisible ? numericLength : -numericLength;
@@ -2850,11 +2924,25 @@ class LineTypeBuilder {
     reorderElements(fromIndex, toIndex) {
         if (fromIndex === toIndex) return;
 
+        const movedElement = this.elements[fromIndex];
+        
+        // Validate first position constraint
+        if (toIndex === 0 && movedElement.type !== 'dash') {
+            this.showNotification('AutoCAD Requirement: First element must be a dash', 'error');
+            return;
+        }
+        
+        // Validate that we're not moving a non-dash to position 0
+        if (toIndex === 0 && (movedElement.type === 'dot' || movedElement.type === 'text')) {
+            this.showNotification('AutoCAD Requirement: First element must be a visible dash', 'error');
+            return;
+        }
+
         // Remove the element from its current position
-        const [movedElement] = this.elements.splice(fromIndex, 1);
+        const [element] = this.elements.splice(fromIndex, 1);
         
         // Insert it at the new position
-        this.elements.splice(toIndex, 0, movedElement);
+        this.elements.splice(toIndex, 0, element);
         
         // Re-render the cards and update output
         this.renderCards();
@@ -2920,20 +3008,25 @@ class LineTypeBuilder {
         button.addEventListener('touchcancel', stopIncrement);
     }
 
-    showNotification(message) {
+    showNotification(message, type = 'success') {
         const notification = document.createElement('div');
         notification.textContent = message;
+        
+        const backgroundColor = type === 'error' ? '#dc3545' : '#28a745';
+        
         notification.style.cssText = `
             position: fixed;
             top: 20px;
             right: 20px;
-            background: #28a745;
+            background: ${backgroundColor};
             color: white;
             padding: 1rem 2rem;
             border-radius: 5px;
             box-shadow: 0 5px 15px rgba(0,0,0,0.3);
             z-index: 1001;
             animation: slideIn 0.3s ease;
+            max-width: 400px;
+            word-wrap: break-word;
         `;
         
         document.body.appendChild(notification);
