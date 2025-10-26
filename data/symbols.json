@@ -1,0 +1,100 @@
+{
+  "symbols": [
+    {
+      "name": "Diameter",
+      "code": "%%C",
+      "preview": "Ø",
+      "description": "AutoCAD diameter symbol"
+    },
+    {
+      "name": "Degree",
+      "code": "%%D",
+      "preview": "°",
+      "description": "AutoCAD degree symbol"
+    },
+    {
+      "name": "Plus/Minus",
+      "code": "%%P",
+      "preview": "±",
+      "description": "AutoCAD plus/minus symbol"
+    },
+    {
+      "name": "Almost equal",
+      "code": "\\U+2248",
+      "preview": "≈",
+      "description": "Almost equal to"
+    },
+    {
+      "name": "Angle",
+      "code": "\\U+2220",
+      "preview": "∠",
+      "description": "Angle"
+    },
+    {
+      "name": "Center Line",
+      "code": "\\U+2104",
+      "preview": "℄",
+      "description": "Center Line"
+    },
+    {
+      "name": "Delta",
+      "code": "\\U+0394",
+      "preview": "Δ",
+      "description": "Greek capital delta"
+    },
+    {
+      "name": "Electrical Phase",
+      "code": "\\U+2078",
+      "preview": "ϕ",
+      "description": "Electrical phase"
+    },
+    {
+      "name": "Identity",
+      "code": "\\U+2261",
+      "preview": "≡",
+      "description": "Identical to"
+    },
+    {
+      "name": "Not Equal",
+      "code": "\\U+2260",
+      "preview": "≠",
+      "description": "Not equal to"
+    },
+    {
+      "name": "Omega",
+      "code": "\\U+03A9",
+      "preview": "Ω",
+      "description": "Greek capital omega"
+    },
+    {
+      "name": "Property Line",
+      "code": "\\U+214A",
+      "preview": "⅊",
+      "description": "Property Line"
+    },
+    {
+      "name": "Phi",
+      "code": "\\U+03C6",
+      "preview": "φ",
+      "description": "Greek lowercase phi"
+    },
+    {
+      "name": "Division",
+      "code": "\\U+00F7",
+      "preview": "÷",
+      "description": "Division sign"
+    },
+    {
+      "name": "Not Equal",
+      "code": "\\U+2260",
+      "preview": "≠",
+      "description": "Not equal to"
+    },
+    {
+      "name": "Infinity",
+      "code": "\\U+221E",
+      "preview": "∞",
+      "description": "Infinity symbol"
+    }
+  ]
+}

@@ -2,6 +2,7 @@
 class LineTypeBuilder {
     constructor() {
         this.elements = [];
+        this.symbols = null; // Will be loaded from symbols.json
         this.init();
     }
 
@@ -29,6 +30,9 @@ class LineTypeBuilder {
         // Debug helpers
         this.showTextGuides = false;
         
+        // Formatting operation flag to prevent event conflicts
+        this.isFormattingText = false;
+        
         // Circle preview settings
         this.minCircleRadius = 0.8 * 200; // Fixed minimum radius: 0.8 AutoCAD units = 160 pixels
         
@@ -49,6 +53,18 @@ class LineTypeBuilder {
         this.linetypeName.addEventListener('input', () => this.updateOutput());
         this.linetypeDesc.addEventListener('input', () => this.updateOutput());
         
+        // Close symbol dropdowns when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.symbol-dropdown')) {
+                document.querySelectorAll('.symbol-dropdown-menu').forEach(menu => {
+                    menu.style.display = 'none';
+                });
+            }
+        });
+        
+        // Load symbols from JSON file
+        this.loadSymbols();
+        
         // Initialize with default elements
         this.initializeDefaultElements();
         this.updateOutput();
@@ -58,6 +74,22 @@ class LineTypeBuilder {
         setTimeout(() => {
             this.zoomExtents();
         }, 100); // Small delay to ensure canvas is ready
+    }
+
+    async loadSymbols() {
+        try {
+            const response = await fetch('./data/symbols.json');
+            this.symbols = await response.json();
+        } catch (error) {
+            console.error('Failed to load symbols:', error);
+            // Provide fallback basic symbols
+            this.symbols = {
+                categories: { basic: "Basic Symbols" },
+                symbols: [
+                    { name: "Degree", code: "\\U+00B0", category: "basic", preview: "°", description: "Degree symbol" }
+                ]
+            };
+        }
     }
 
     initializeDefaultElements() {
@@ -109,51 +141,80 @@ class LineTypeBuilder {
     }
 
     // AutoCAD Line Type Validation Rules
-    validateFirstElement(type) {
-        // Rule 1: First element must be a dash (not dot, text, or zero-length dash)
+    validateLineType() {
+        const errors = [];
+        
+        // Rule 1: Must have elements
         if (this.elements.length === 0) {
-            if (type !== 'dash') {
-                this.showNotification('AutoCAD Requirement: First element must be a visible dash (not dot, text, or invisible dash)', 'error');
-                return false;
+            errors.push("Line type must have at least one element");
+            this.showPersistentError(errors[0]);
+            return false;
+        }
+        
+        // Rule 2: First element must be a visible dash
+        const firstElement = this.elements[0];
+        if (firstElement.type !== 'dash') {
+            errors.push("First element must be a dash (not dot or text)");
+        } else if (firstElement.value <= 0) {
+            errors.push("First element must be a visible dash (length > 0)");
+        }
+        
+        // Rule 3: No consecutive text elements
+        for (let i = 0; i < this.elements.length - 1; i++) {
+            if (this.elements[i].type === 'text' && this.elements[i + 1].type === 'text') {
+                errors.push("Text elements cannot be placed back-to-back. Add a dash, gap, or dot between text elements");
+                break;
             }
         }
-        return true;
-    }
-
-    validateConsecutiveText() {
-        // Rule 2: Back-to-back text blocks are not allowed
-        if (this.elements.length > 0) {
-            const lastElement = this.elements[this.elements.length - 1];
-            return !(lastElement.type === 'text');
+        
+        // Rule 4: No consecutive dots (dot,dot sequence)
+        for (let i = 0; i < this.elements.length - 1; i++) {
+            if (this.elements[i].type === 'dot' && this.elements[i + 1].type === 'dot') {
+                errors.push("Dots cannot be placed back-to-back. Add a dash or gap between dots");
+                break;
+            }
         }
-        return true;
-    }
-
-    validateNewElement(type) {
-        // Check first element rule
-        if (!this.validateFirstElement(type)) {
+        
+        // Rule 5: No dot,text,dot sequences
+        for (let i = 0; i < this.elements.length - 2; i++) {
+            if (this.elements[i].type === 'dot' && 
+                this.elements[i + 1].type === 'text' && 
+                this.elements[i + 2].type === 'dot') {
+                errors.push("Cannot have dot-text-dot sequences. Add a dash or gap between dot and text, or between text and dot");
+                break;
+            }
+        }
+        
+        if (errors.length > 0) {
+            this.showPersistentError(errors[0]);
             return false;
         }
-
-        // Check consecutive text rule
-        if (type === 'text' && !this.validateConsecutiveText()) {
-            this.showNotification('AutoCAD Requirement: Text elements cannot be placed back-to-back. Add a dash, gap, or dot between text elements.', 'error');
-            return false;
-        }
-
+        
+        this.hidePersistentError();
         return true;
     }
+
+    showPersistentError(message) {
+        const errorBanner = document.getElementById('errorBanner');
+        const errorMessage = document.getElementById('errorMessage');
+        errorMessage.textContent = message;
+        errorBanner.style.display = 'block';
+    }
+
+    hidePersistentError() {
+        const errorBanner = document.getElementById('errorBanner');
+        errorBanner.style.display = 'none';
+    }
+
+
 
     addElement(type) {
         if (this.elements.length >= this.MAX_ELEMENTS) {
+            this.showNotification(`Maximum of ${this.MAX_ELEMENTS} elements allowed`);
             return;
         }
 
-        // Validate AutoCAD requirements before adding
-        if (!this.validateNewElement(type)) {
-            return;
-        }
-        
+        // Always allow the element to be added
         const element = {
             id: Date.now(),
             type: type,
@@ -163,6 +224,9 @@ class LineTypeBuilder {
         this.elements.push(element);
         this.renderCards();
         this.updateOutput();
+        
+        // Check validation after adding (but don't block)
+        this.validateLineType();
     }
 
     getDefaultValue(type) {
@@ -210,6 +274,12 @@ class LineTypeBuilder {
         });
         
         this.cardsContainer.appendChild(cardsGrid);
+        
+        // Populate symbol dropdowns for any text elements
+        this.populateSymbolDropdowns();
+        
+        // Validate line type after rendering
+        this.validateLineType();
     }
 
     createElementCard(element, index) {
@@ -293,14 +363,28 @@ class LineTypeBuilder {
                                 <div class="text-helper-buttons">
                                     <button type="button" class="case-btn" onclick="lineTypeBuilder.changeTextCase(${element.id}, 'upper')" title="Convert to uppercase">ABC</button>
                                     <button type="button" class="case-btn" onclick="lineTypeBuilder.changeTextCase(${element.id}, 'lower')" title="Convert to lowercase">abc</button>
+                                    <div class="symbol-dropdown" data-element-id="${element.id}">
+                                        <button type="button" class="symbol-btn" onclick="lineTypeBuilder.toggleSymbolDropdown(${element.id})" title="Insert symbol">±▼</button>
+                                        <div class="symbol-dropdown-menu" style="display: none;">
+                                            <div class="symbol-header">
+                                                <span>AutoCAD Symbols</span>
+                                                <button type="button" class="custom-symbol-btn" onclick="lineTypeBuilder.showCustomUnicodeInput(${element.id});" title="Enter custom Unicode symbol">Custom...</button>
+                                            </div>
+                                            <div class="symbol-grid-main"></div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <input type="text" 
-                                   value="${element.value.text}" 
-                                   class="text-input"
-                                   onchange="lineTypeBuilder.updateTextProperty(${element.id}, 'text', this.value)"
-                                   oninput="lineTypeBuilder.updateTextProperty(${element.id}, 'text', this.value)">
+                            <div class="text-input-container" data-element-id="${element.id}">
+                                <input type="text" 
+                                       id="textInput${element.id}"
+                                       value="${element.value.text}" 
+                                       class="text-input"
+                                       onchange="lineTypeBuilder.updateTextProperty(${element.id}, 'text', this.value)"
+                                       placeholder="Enter text or use symbols below">
+                            </div>
                         </div>
+
                         <div class="control-row">
                             <div class="control-group half-width">
                                 <label>Scale</label>
@@ -466,39 +550,22 @@ class LineTypeBuilder {
         this.elements = this.elements.filter(element => element.id !== id);
         this.renderCards();
         this.updateOutput();
+        
+        // Validate after removal (important for first element changes)
+        this.validateLineType();
     }
 
     changeElementType(id, newType) {
         const elementIndex = this.elements.findIndex(element => element.id === id);
         if (elementIndex !== -1) {
-            // Special validation for first element
-            if (elementIndex === 0 && newType !== 'dash') {
-                this.showNotification('AutoCAD Requirement: First element must be a dash', 'error');
-                // Reset the dropdown to the current type
-                this.renderCards();
-                return;
-            }
-
-            // Validate consecutive text elements
-            if (newType === 'text') {
-                // Check previous element
-                if (elementIndex > 0 && this.elements[elementIndex - 1].type === 'text') {
-                    this.showNotification('AutoCAD Requirement: Text elements cannot be placed back-to-back. Add a dash, gap, or dot between text elements.', 'error');
-                    this.renderCards();
-                    return;
-                }
-                // Check next element
-                if (elementIndex < this.elements.length - 1 && this.elements[elementIndex + 1].type === 'text') {
-                    this.showNotification('AutoCAD Requirement: Text elements cannot be placed back-to-back. Add a dash, gap, or dot between text elements.', 'error');
-                    this.renderCards();
-                    return;
-                }
-            }
-
+            // Always allow the change
             this.elements[elementIndex].type = newType;
             this.elements[elementIndex].value = this.getDefaultValue(newType);
             this.renderCards();
             this.updateOutput();
+            
+            // Validate after change (show banner if needed)
+            this.validateLineType();
         }
     }
 
@@ -508,23 +575,16 @@ class LineTypeBuilder {
             const element = this.elements[elementIndex];
             const numericLength = Math.abs(parseFloat(length) || 0);
             
-            // Special validation for first element - cannot be zero length
-            if (elementIndex === 0 && numericLength === 0) {
-                this.showNotification('AutoCAD Requirement: First element must be a visible dash (length > 0)', 'error');
-                // Reset to minimum valid length
-                element.value = 0.1;
-                this.renderCards();
-                this.updateOutput();
-                return;
-            }
-            
-            // Maintain visibility state while updating length
+            // Always allow the change
             const wasVisible = element.value >= 0;
             element.value = wasVisible ? numericLength : -numericLength;
             
             // Re-render cards to update UI and call updateOutput
             this.renderCards();
             this.updateOutput();
+            
+            // Validate after change (show banner if needed)
+            this.validateLineType();
         }
     }
 
@@ -551,12 +611,16 @@ class LineTypeBuilder {
     updateDashVisibility(id, isVisible) {
         const elementIndex = this.elements.findIndex(element => element.id === id);
         if (elementIndex !== -1) {
+            // Always allow the change
             const element = this.elements[elementIndex];
             const length = Math.abs(element.value);
             // Set positive for visible, negative for gap
             element.value = isVisible ? length : -length;
             this.renderCards();
             this.updateOutput();
+            
+            // Validate after visibility change (show banner if needed)
+            this.validateLineType();
         }
     }
 
@@ -594,6 +658,39 @@ class LineTypeBuilder {
         }
     }
 
+    updateTextPropertyFromDisplay(id, property, displayValue) {
+        // Skip automatic updates during formatting operations to prevent conflicts
+        if (this.isFormattingText) return;
+        
+        const elementIndex = this.elements.findIndex(element => element.id === id);
+        if (elementIndex !== -1) {
+            const element = this.elements[elementIndex];
+            
+            // For text property, determine if we need to convert combining characters
+            let storageValue = displayValue;
+            if (property === 'text') {
+                // Check if the value contains combining characters that need conversion
+                if (/[\u0305\u0332\u0336]/.test(displayValue)) {
+                    // Contains combining characters - convert to AutoCAD codes
+                    storageValue = this.convertVisualToAutoCADStorage(displayValue);
+                } else {
+                    // Already clean AutoCAD codes or plain text - store as-is
+                    storageValue = this.convertDisplayForStorage(displayValue);
+                }
+            } else {
+                // Non-text properties - use standard conversion
+                storageValue = this.convertDisplayForStorage(displayValue);
+            }
+            
+            if (property === 'scale' || property === 'xOffset' || property === 'yOffset' || property === 'rotationAngle') {
+                element.value[property] = parseFloat(storageValue) || 0;
+            } else {
+                element.value[property] = storageValue;
+            }
+            this.updateOutput();
+        }
+    }
+
     updateTextRotationType(id, rotationType) {
         const elementIndex = this.elements.findIndex(element => element.id === id);
         if (elementIndex !== -1) {
@@ -614,25 +711,563 @@ class LineTypeBuilder {
         const elementIndex = this.elements.findIndex(element => element.id === id);
         if (elementIndex !== -1) {
             const element = this.elements[elementIndex];
-            let newText = element.value.text;
             
-            if (caseType === 'upper') {
-                newText = newText.toUpperCase();
-            } else if (caseType === 'lower') {
-                newText = newText.toLowerCase();
-            }
-            
-            element.value.text = newText;
-            
-            // Update the input field directly
+            // Get the current text from the input field
             const card = document.querySelector(`[data-element-id="${id}"]`);
             const textInput = card?.querySelector('.text-input');
-            if (textInput) {
-                textInput.value = newText;
+            
+            if (!textInput) return;
+            
+            // Apply case conversion
+            let convertedText;
+            if (caseType === 'upper') {
+                convertedText = textInput.value.toUpperCase();
+            } else if (caseType === 'lower') {
+                convertedText = textInput.value.toLowerCase();
+            } else {
+                convertedText = textInput.value;
             }
+            
+            // Update both the input and stored value
+            textInput.value = convertedText;
+            element.value.text = convertedText;
             
             this.updateOutput();
         }
+    }
+
+    centerText(id) {
+        const elementIndex = this.elements.findIndex(element => element.id === id);
+        if (elementIndex !== -1) {
+            const element = this.elements[elementIndex];
+            
+            if (!textInput) return;
+            
+            // Set flag to prevent automatic event handling conflicts
+            this.isFormattingText = true;
+            
+            // Get current selection or entire text
+            const start = textInput.selectionStart;
+            const end = textInput.selectionEnd;
+            const fullText = textInput.value;
+            
+            let targetText;
+            let displayText, storageText;
+            
+            if (start === end) {
+                // No selection - apply to entire text
+                targetText = fullText;
+                
+                if (this.isFullyFormatted(targetText, formatType)) {
+                    // Text is fully formatted with this format - remove this format (toggle off)
+                    displayText = this.removeFormatting(targetText, formatType);
+                } else {
+                    // Text is not fully formatted with this format - add this format (toggle on)
+                    displayText = this.wrapTextWithVisualFormat(targetText, formatType);
+                }
+                
+                // Convert the entire display text to storage format
+                storageText = this.convertVisualToAutoCADStorage(displayText);
+            } else {
+                // Selection exists - handle selected portion
+                const beforeSelection = fullText.substring(0, start);
+                const selectedText = fullText.substring(start, end);
+                const afterSelection = fullText.substring(end);
+                
+                let processedSelection;
+                
+                if (this.isFullyFormatted(selectedText, formatType)) {
+                    // Selected text is fully formatted with this specific format - remove only this format (toggle off)
+                    processedSelection = this.removeFormatting(selectedText, formatType);
+                } else {
+                    // Selected text is not fully formatted with this format - add this format (toggle on)
+                    // Do NOT remove existing formatting, just add this format
+                    processedSelection = this.wrapTextWithVisualFormat(selectedText, formatType);
+                }
+                
+                // Reconstruct the full display text
+                displayText = beforeSelection + processedSelection + afterSelection;
+                
+                // Convert the entire display text to storage format (handles all formatting properly)
+                storageText = this.convertVisualToAutoCADStorage(displayText);
+            }
+            
+            // Update display with visual formatting and storage with AutoCAD codes
+            textInput.value = displayText;
+            element.value.text = storageText;
+            
+            // Update output immediately after text changes
+            this.updateOutput();
+            
+            // Preserve cursor position or selection (do this after update to avoid interference)
+            if (start === end) {
+                // No selection - place cursor at end
+                textInput.selectionStart = textInput.selectionEnd = displayText.length;
+            } else {
+                // Restore selection, accounting for any length changes
+                const newSelectionLength = displayText.length - beforeSelection.length - afterSelection.length;
+                textInput.selectionStart = start;
+                textInput.selectionEnd = start + newSelectionLength;
+            }
+            
+            // Force another update after DOM operations settle (for selection-based formatting)
+            requestAnimationFrame(() => {
+                this.updateOutput();
+                // Update the formatted display overlay and show it if underscore formatting was applied
+                const container = textInput.parentNode;
+                const overlay = container.querySelector('.text-display-overlay');
+                if (overlay) {
+                    // Apply dynamic formatting styles based on element scale
+                    if (element && element.value.scale !== undefined) {
+                        this.applyDynamicFormattingStyles(overlay, element.value.scale);
+                    }
+                    const formattedHTML = this.convertTextToHTMLFormatting(displayText);
+                    overlay.innerHTML = formattedHTML;
+                    
+                    // Don't automatically switch to overlay - let user click to see formatting
+                    // This keeps the input editable
+                }
+                // Clear the formatting flag after all operations complete
+                this.isFormattingText = false;
+            });
+        }
+    }
+
+    hasFormatting(text, formatType) {
+        // Check if text has the specified formatting using combining characters
+        const formatChars = {
+            'overscore': '\u0305',     // Combining overline
+            'underscore': '\u0332',    // Combining underline  
+            'strikethrough': '\u0336'  // Combining strikethrough
+        };
+        
+        const combiningChar = formatChars[formatType];
+        return combiningChar && text.includes(combiningChar);
+    }
+
+    removeFormatting(text, formatType) {
+        // Remove only the specific formatting from text, preserving other formats
+        const formatChars = {
+            'overscore': '\u0305',     // Combining overline
+            'underscore': '\u0332',    // Combining underline  
+            'strikethrough': '\u0336'  // Combining strikethrough
+        };
+        
+        const combiningChar = formatChars[formatType];
+        if (!combiningChar) return text;
+        
+        // Remove only the specific combining character, keep others
+        return text.replace(new RegExp(combiningChar, 'g'), '');
+    }
+
+    isFullyFormatted(text, formatType) {
+        // Check if ALL base characters in the text have the specified formatting
+        if (!text || text.length === 0) return false;
+        
+        const formatChars = {
+            'overscore': '\u0305',     // Combining overline
+            'underscore': '\u0332',    // Combining underline  
+            'strikethrough': '\u0336'  // Combining strikethrough
+        };
+        
+        const combiningChar = formatChars[formatType];
+        if (!combiningChar) return false;
+        
+        // Get all combining characters to identify base characters
+        const allCombiningChars = Object.values(formatChars);
+        
+        // Split into individual characters and check each base character
+        const chars = Array.from(text);
+        let baseCharCount = 0;
+        let formattedCharCount = 0;
+        
+        for (let i = 0; i < chars.length; i++) {
+            const char = chars[i];
+            
+            // Skip if this is any combining character
+            if (allCombiningChars.includes(char)) continue;
+            
+            // This is a base character
+            baseCharCount++;
+            
+            // Look ahead to see if our specific combining character follows
+            let j = i + 1;
+            let hasOurFormat = false;
+            
+            // Check all following combining characters
+            while (j < chars.length && allCombiningChars.includes(chars[j])) {
+                if (chars[j] === combiningChar) {
+                    hasOurFormat = true;
+                }
+                j++;
+            }
+            
+            if (hasOurFormat) {
+                formattedCharCount++;
+            }
+        }
+        
+        return baseCharCount > 0 && baseCharCount === formattedCharCount;
+    }
+
+    wrapTextWithVisualFormat(text, formatType) {
+        // Apply visual formatting using Unicode combining characters
+        // These will be converted to HTML/CSS formatting for consistent positioning in the display overlay
+        const formatMap = {
+            'overscore': '\u0305',    // Combining overline
+            'underscore': '\u0332',   // Combining underline  
+            'strikethrough': '\u0336' // Combining strikethrough
+        };
+        
+        const combiningChar = formatMap[formatType];
+        if (!combiningChar) return text;
+        
+        const allCombiningChars = Object.values(formatMap);
+        const result = [];
+        const chars = Array.from(text);
+        
+        for (let i = 0; i < chars.length; i++) {
+            const char = chars[i];
+            
+            // If this is a combining character, add it to result and continue
+            if (allCombiningChars.includes(char)) {
+                result.push(char);
+                continue;
+            }
+            
+            // This is a base character - add it first
+            result.push(char);
+            
+            // Collect all existing combining characters that follow this base character
+            const existingFormats = [];
+            let j = i + 1;
+            
+            while (j < chars.length && allCombiningChars.includes(chars[j])) {
+                existingFormats.push(chars[j]);
+                j++;
+            }
+            
+            // Check if our format is already present
+            const hasOurFormat = existingFormats.includes(combiningChar);
+            
+            // Add our format if it's not already there
+            if (!hasOurFormat) {
+                existingFormats.push(combiningChar);
+            }
+            
+            // Add all combining characters (preserving existing + adding new)
+            result.push(...existingFormats);
+            
+            // Skip the combining characters we just processed
+            i = j - 1;
+        }
+        
+        return result.join('');
+    }
+
+    convertTextToHTMLFormatting(text) {
+        // Convert text with Unicode combining characters to HTML with CSS classes for consistent positioning
+        if (!text) return '';
+        
+        const formatChars = {
+            '\u0305': 'overscore',    // Combining overline
+            '\u0332': 'underscore',   // Combining underline  
+            '\u0336': 'strikethrough' // Combining strikethrough
+        };
+        
+        let result = '';
+        const chars = Array.from(text);
+        let i = 0;
+        
+        while (i < chars.length) {
+            const char = chars[i];
+            
+            // Skip combining characters themselves - they'll be processed as part of the base character
+            if (formatChars[char]) {
+                i++;
+                continue;
+            }
+            
+            // This is a base character - collect its formatting
+            const formats = [];
+            let j = i + 1;
+            
+            // Look ahead to collect all combining characters for this base character
+            while (j < chars.length && formatChars[chars[j]]) {
+                formats.push(formatChars[chars[j]]);
+                j++;
+            }
+            
+            // Create HTML with appropriate CSS classes
+            if (formats.length > 0) {
+                // Handle underscore specially to avoid duplicate lines on descenders
+                const nonUnderscoreFormats = formats.filter(f => f !== 'underscore');
+                const hasUnderscore = formats.includes('underscore');
+                
+                if (nonUnderscoreFormats.length > 0) {
+                    const classNames = nonUnderscoreFormats.map(f => `format-${f}`).join(' ');
+                    result += `<span class="format-char ${classNames}" data-has-underscore="${hasUnderscore}">${this.escapeHtml(char)}</span>`;
+                } else if (hasUnderscore) {
+                    // Only underscore formatting - use simpler span to avoid descender issues
+                    result += `<span class="format-char" data-has-underscore="true">${this.escapeHtml(char)}</span>`;
+                } else {
+                    result += this.escapeHtml(char);
+                }
+            } else {
+                result += this.escapeHtml(char);
+            }
+            
+            i = j;
+        }
+        
+        // Post-process to wrap consecutive underscore characters in containers
+        result = this.wrapUnderscoreSequences(result);
+        
+        return result;
+    }
+    
+    /**
+     * Wraps consecutive characters with underscore formatting in containers to create single underscore lines
+     */
+    wrapUnderscoreSequences(html) {
+        // Use regex to find sequences of spans with data-has-underscore="true"
+        // This regex matches one or more consecutive spans with underscore formatting
+        return html.replace(
+            /(<span[^>]*data-has-underscore="true"[^>]*>[^<]*<\/span>(?:\s*<span[^>]*data-has-underscore="true"[^>]*>[^<]*<\/span>)*)/g,
+            '<span class="underscore-container">$1</span>'
+        );
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    /**
+     * Calculates dynamic positioning offsets based on scale value
+     */
+    calculateFormattingOffsets(scale) {
+        const scaleValue = parseFloat(scale) || 1.0;
+        
+        return {
+            overscore: `-${0.15 * scaleValue}em`,      // Slightly above cap-height, scaled
+            underscore: `-${0.85 * scaleValue}em`,     // 0.15 × scale below baseline as requested
+            strikethrough: `${35 * scaleValue}em`    // Middle of character, scaled
+        };
+    }
+
+    /**
+     * Applies dynamic formatting styles to a container based on element scale
+     */
+    applyDynamicFormattingStyles(container, scale) {
+        if (!container) return;
+        
+        const offsets = this.calculateFormattingOffsets(scale);
+        
+        // Set CSS custom properties for dynamic positioning
+        container.style.setProperty('--overscore-offset', offsets.overscore);
+        container.style.setProperty('--underscore-offset', offsets.underscore);
+        container.style.setProperty('--strikethrough-offset', offsets.strikethrough);
+    }
+
+    /**
+     * Synchronize contenteditable div changes to hidden input
+     */
+    syncEditableToInput(inputId, editableElement) {
+        const input = document.querySelector(`#${inputId}`);
+        if (!input || !editableElement) return;
+        
+        // Get text content from contenteditable (preserving formatting)
+        const textContent = editableElement.textContent || '';
+        
+        // Convert visual formatting back to AutoCAD codes for storage
+        const storageText = this.convertVisualToAutoCADStorage(textContent);
+        
+        // Update hidden input
+        input.value = storageText;
+        
+        // Trigger the change event
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    /**
+     * Shows the text input field and hides the formatted display
+     */
+    showTextInput(inputId) {
+        const input = document.querySelector(`#${inputId}`);
+        if (!input) return;
+        
+        const container = input.parentNode;
+        const overlay = container.querySelector('.text-display-overlay');
+        const editable = container.querySelector('.text-input-editable');
+        
+        // Apply dynamic formatting styles to container to ensure consistent positioning
+        const elementId = parseInt(inputId.replace('textInput', ''));
+        const element = this.elements.find(el => el.id === elementId);
+        if (element && element.value.scale !== undefined) {
+            this.applyDynamicFormattingStyles(container, element.value.scale);
+        }
+        
+        // Update contenteditable with formatted content
+        if (element && editable) {
+            const displayText = this.convertUnicodeForDisplay(element.value.text);
+            const formattedHTML = this.convertTextToHTMLFormatting(displayText);
+            editable.innerHTML = formattedHTML;
+        }
+        
+        // Show contenteditable, hide overlay
+        if (editable) {
+            editable.style.visibility = 'visible';
+            editable.style.zIndex = '2';
+        }
+        
+        if (overlay) {
+            overlay.style.visibility = 'hidden';
+            overlay.style.zIndex = '1';
+        }
+        
+        // Focus the contenteditable after a brief delay
+        setTimeout(() => {
+            if (editable) {
+                editable.focus();
+                // Place cursor at end
+                const range = document.createRange();
+                range.selectNodeContents(editable);
+                range.collapse(false);
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+            }
+        }, 10);
+    }
+
+    /**
+     * Shows the formatted display overlay and hides the text input
+     */
+    showFormattedDisplay(inputId) {
+        const input = document.querySelector(`#${inputId}`);
+        if (!input) return;
+        
+        const container = input.parentNode;
+        const overlay = container.querySelector('.text-display-overlay');
+        const editable = container.querySelector('.text-input-editable');
+        
+        if (input && overlay) {
+            // Get the element ID from the input ID
+            const elementId = parseInt(inputId.replace('textInput', ''));
+            const element = this.elements.find(el => el.id === elementId);
+            
+            if (element && element.value.scale !== undefined) {
+                // Apply dynamic formatting styles to container for consistent positioning
+                this.applyDynamicFormattingStyles(container, element.value.scale);
+            }
+            
+            // Convert stored value to display format and show in overlay
+            const displayText = this.convertUnicodeForDisplay(element.value.text);
+            const formattedHTML = this.convertTextToHTMLFormatting(displayText);
+            overlay.innerHTML = formattedHTML;
+            
+            // Show overlay if there's any content
+            if (element.value.text.trim()) {
+                // Hide contenteditable, show overlay
+                if (editable) {
+                    editable.style.visibility = 'hidden';
+                    editable.style.zIndex = '1';
+                }
+                overlay.style.visibility = 'visible';
+                overlay.style.zIndex = '2';
+            }
+        }
+    }
+
+    convertVisualToAutoCADStorage(text) {
+        // Convert text with visual formatting to AutoCAD storage format with minimal, clean codes
+        if (!text) return text;
+        
+        const formatChars = {
+            '\u0305': 'overscore',     // Combining overline
+            '\u0332': 'underscore',    // Combining underline  
+            '\u0336': 'strikethrough'  // Combining strikethrough
+        };
+        
+        const formatCodes = {
+            'overscore': '%%O',
+            'underscore': '%%U', 
+            'strikethrough': '%%K'
+        };
+        
+        // Parse text into character-format pairs
+        const charData = [];
+        const chars = Array.from(text);
+        
+        for (let i = 0; i < chars.length; i++) {
+            const char = chars[i];
+            
+            if (formatChars[char]) {
+                // This is a combining character - add format to the last base character
+                if (charData.length > 0) {
+                    charData[charData.length - 1].formats.add(formatChars[char]);
+                }
+            } else {
+                // This is a base character
+                charData.push({
+                    char: char,
+                    formats: new Set()
+                });
+            }
+        }
+        
+        if (charData.length === 0) return text;
+        
+        // Build output with minimal format changes
+        let result = '';
+        let activeFormats = new Set(); // Currently active format codes
+        
+        for (let i = 0; i < charData.length; i++) {
+            const { char, formats } = charData[i];
+            
+            // Determine what format changes are needed
+            const formatsToClose = new Set([...activeFormats].filter(f => !formats.has(f)));
+            const formatsToOpen = new Set([...formats].filter(f => !activeFormats.has(f)));
+            
+            // Close formats that are no longer needed (in reverse order for proper nesting)
+            const closeOrder = ['strikethrough', 'underscore', 'overscore'];
+            closeOrder.forEach(formatType => {
+                if (formatsToClose.has(formatType)) {
+                    result += formatCodes[formatType];
+                    activeFormats.delete(formatType);
+                }
+            });
+            
+            // Open new formats (in order for proper nesting)
+            const openOrder = ['overscore', 'underscore', 'strikethrough'];
+            openOrder.forEach(formatType => {
+                if (formatsToOpen.has(formatType)) {
+                    result += formatCodes[formatType];
+                    activeFormats.add(formatType);
+                }
+            });
+            
+            // Add the character (converted for storage)
+            result += this.convertDisplayForStorage(char);
+        }
+        
+        // Close any remaining open formats at the end
+        const closeOrder = ['strikethrough', 'underscore', 'overscore'];
+        closeOrder.forEach(formatType => {
+            if (activeFormats.has(formatType)) {
+                result += formatCodes[formatType];
+            }
+        });
+        
+        return result;
+    }
+
+    wrapTextWithAutocadFormat(text, formatType) {
+        // This function is now replaced by convertVisualToAutoCADStorage
+        // But keeping for backward compatibility
+        return this.convertVisualToAutoCADStorage(text);
     }
 
     centerText(id) {
@@ -698,8 +1333,11 @@ class LineTypeBuilder {
         
         ctx.font = `${fontSize}px ${fontFamily}`;
         
-        // Measure the text
-        const metrics = ctx.measureText(textValue.text);
+        // Convert Unicode codes to actual display characters before measuring
+        const displayText = this.convertUnicodeForDisplay(textValue.text);
+        
+        // Measure the converted display text
+        const metrics = ctx.measureText(displayText);
         
         // Calculate dimensions
         // metrics.width is in pixels, convert to AutoCAD units (1 unit = 200px)
@@ -1984,9 +2622,10 @@ class LineTypeBuilder {
     }
 
     drawTextInBox(ctx, x, y, boxRotation, textValue, scale, sideAngle = 0) {
-        // Calculate text dimensions
+        // Calculate text dimensions using plain text (converted from AutoCAD codes, no combining chars)
         ctx.font = `${textValue.scale * 200 * 1.4}px Arial`;
-        const textMetrics = ctx.measureText(textValue.text);
+        const displayTextForMeasurement = this.convertUnicodeForCanvas(textValue.text);
+        const textMetrics = ctx.measureText(displayTextForMeasurement);
         const textWidth = textMetrics.width;
         
         // Text box height based on uppercase letters (cap height)
@@ -2091,7 +2730,50 @@ class LineTypeBuilder {
         ctx.font = `${textValue.scale * 200 * 1.4}px Arial`;
         
         // Position text at the anchor point
-        ctx.fillText(textValue.text, textAnchorX, textAnchorY);
+        // Convert Unicode codes to plain characters for canvas (no combining characters for underline)
+        const displayText = this.convertUnicodeForCanvas(textValue.text);
+        ctx.fillText(displayText, textAnchorX, textAnchorY);
+        
+        // Draw formatting lines for formatted text
+        const hasUnderscore = textValue.text.includes('%%U') || textValue.text.includes('\u0332');
+        const hasOverscore = textValue.text.includes('%%O') || textValue.text.includes('\u0305');
+        const hasStrikethrough = textValue.text.includes('%%K') || textValue.text.includes('\u0336');
+        
+        if (hasUnderscore || hasOverscore || hasStrikethrough) {
+            const textMetrics = ctx.measureText(displayText);
+            const textWidth = textMetrics.width;
+            const fontSize = textValue.scale * 200 * 1.4;
+            
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 1;
+            
+            // Draw underscore line (0.15 × scale below baseline)
+            if (hasUnderscore) {
+                const underscoreOffset = fontSize * 0.15;
+                ctx.beginPath();
+                ctx.moveTo(textAnchorX, textAnchorY + underscoreOffset);
+                ctx.lineTo(textAnchorX + textWidth, textAnchorY + underscoreOffset);
+                ctx.stroke();
+            }
+            
+            // Draw overscore line (0.85 × scale above cap-height)
+            if (hasOverscore) {
+                const overscoreOffset = fontSize * .85;
+                ctx.beginPath();
+                ctx.moveTo(textAnchorX, textAnchorY - overscoreOffset);
+                ctx.lineTo(textAnchorX + textWidth, textAnchorY - overscoreOffset);
+                ctx.stroke();
+            }
+            
+            // Draw strikethrough line (0.35 × scale through middle of text)
+            if (hasStrikethrough) {
+                const strikethroughOffset = fontSize * 0.35;
+                ctx.beginPath();
+                ctx.moveTo(textAnchorX, textAnchorY - strikethroughOffset);
+                ctx.lineTo(textAnchorX + textWidth, textAnchorY - strikethroughOffset);
+                ctx.stroke();
+            }
+        }
         
         ctx.restore();
     }
@@ -2754,11 +3436,347 @@ class LineTypeBuilder {
                 }
             }
             
+            // If scale was updated, refresh the formatting overlay with new positioning
+            if (property === 'scale') {
+                const textInput = card?.querySelector('.text-input');
+                if (textInput) {
+                    const container = textInput.parentNode;
+                    const overlay = container.querySelector('.text-display-overlay');
+                    if (overlay && overlay.style.display !== 'none') {
+                        // Apply dynamic formatting styles with updated scale
+                        this.applyDynamicFormattingStyles(overlay, element.value.scale);
+                        const formattedHTML = this.convertTextToHTMLFormatting(textInput.value);
+                        overlay.innerHTML = formattedHTML;
+                    }
+                }
+            }
+            
+            this.updateOutput();
+        }
+    }
+
+    // Symbol-related functions
+    populateSymbolDropdowns() {
+        if (!this.symbols) return;
+        
+        // Find all symbol dropdowns in text elements
+        const symbolDropdowns = document.querySelectorAll('.symbol-dropdown');
+        
+        symbolDropdowns.forEach(dropdown => {
+            const elementId = parseInt(dropdown.dataset.elementId);
+            const symbolGrid = dropdown.querySelector('.symbol-grid-main');
+            
+            if (!symbolGrid) return;
+            
+            // Clear existing symbols
+            symbolGrid.innerHTML = '';
+            
+            // Add all symbols to the grid
+            this.symbols.symbols.forEach(symbol => {
+                const symbolBtn = document.createElement('button');
+                symbolBtn.type = 'button';
+                symbolBtn.className = 'symbol-item-btn';
+                symbolBtn.textContent = symbol.preview;
+                symbolBtn.title = symbol.name;
+                symbolBtn.onclick = () => this.insertSymbol(elementId, symbol.code);
+                symbolGrid.appendChild(symbolBtn);
+            });
+        });
+    }
+
+    toggleSymbolDropdown(elementId) {
+        // Close any other open dropdowns first
+        document.querySelectorAll('.symbol-dropdown-menu').forEach(menu => {
+            if (menu.parentElement.dataset.elementId !== elementId.toString()) {
+                menu.style.display = 'none';
+            }
+        });
+        
+        // Toggle this dropdown
+        const dropdown = document.querySelector(`[data-element-id="${elementId}"] .symbol-dropdown-menu`);
+        if (dropdown) {
+            const isVisible = dropdown.style.display !== 'none';
+            dropdown.style.display = isVisible ? 'none' : 'block';
+            
+            // Populate dropdowns when opening (ensures symbols are loaded)
+            if (!isVisible) {
+                this.populateSymbolDropdowns();
+            }
+        }
+    }
+
+    insertSymbol(elementId, symbolCode) {
+        if (!symbolCode) return;
+        
+        const elementIndex = this.elements.findIndex(element => element.id === elementId);
+        if (elementIndex === -1) return;
+        
+        const element = this.elements[elementIndex];
+        
+        // Insert symbol at end of current text
+        element.value.text += symbolCode;
+        
+        // Update the text input field with display version
+        const card = document.querySelector(`[data-element-id="${elementId}"]`);
+        const textInput = card?.querySelector('.text-input');
+        if (textInput) {
+            textInput.value = this.convertUnicodeForDisplay(element.value.text);
+            
+            // Update the formatted display overlay if it's visible
+            const container = textInput.parentNode;
+            const overlay = container.querySelector('.text-display-overlay');
+            if (overlay && overlay.style.display !== 'none') {
+                // Apply dynamic formatting styles based on element scale
+                if (element && element.value.scale !== undefined) {
+                    this.applyDynamicFormattingStyles(overlay, element.value.scale);
+                }
+                const formattedHTML = this.convertTextToHTMLFormatting(textInput.value);
+                overlay.innerHTML = formattedHTML;
+            }
+        }
+        
+        // Close the dropdown
+        const dropdown = card?.querySelector('.symbol-dropdown-menu');
+        if (dropdown) {
+            dropdown.style.display = 'none';
+        }
+        
+        this.updateOutput();
+    }
+
+    showCustomUnicodeInput(elementId) {
+        console.log('showCustomUnicodeInput called with elementId:', elementId);
+        
+        // Show helpful instructions that mention Character Map
+        const customCode = prompt(
+            'Enter Unicode symbol or code:\n\n' +
+            '• Type the symbol directly: π ° ± → ←\n' +
+            '• Or enter Unicode code: U+03C0, \\U+00B0, 00B0\n\n' +
+            'TIP: You can also:\n' +
+            '• Open Windows Character Map (Start → charmap)\n' +
+            '• Copy any symbol and paste it here\n' +
+            '• Use Alt codes (Alt+0176 for °)\n\n' +
+            'Example: π or U+03C0 for pi symbol',
+            ''
+        );
+        
+        if (!customCode) return;
+        
+        const input = customCode.trim();
+        let normalizedCode;
+        
+        // Check if input is already a Unicode character (length 1-2 for most symbols)
+        if (input.length <= 2 && !/^[0-9A-Fa-f]+$/.test(input) && !input.startsWith('U+') && !input.startsWith('\\U+')) {
+            // User entered the actual symbol, convert it to Unicode code
+            normalizedCode = this.convertDisplayForStorage(input);
+            
+            // If conversion didn't change it, manually convert the character
+            if (normalizedCode === input) {
+                const charCode = input.charCodeAt(0);
+                normalizedCode = `\\U+${charCode.toString(16).toUpperCase().padStart(4, '0')}`;
+            }
+        } else {
+            // User entered a Unicode code, normalize it
+            let codeInput = input.toUpperCase();
+            
+            // Handle different input formats
+            if (codeInput.startsWith('U+')) {
+                normalizedCode = '\\U+' + codeInput.substring(2);
+            } else if (codeInput.startsWith('\\U+')) {
+                normalizedCode = codeInput;
+            } else if (/^[0-9A-F]{4,}$/.test(codeInput)) {
+                normalizedCode = '\\U+' + codeInput;
+            } else {
+                alert('Invalid format. Enter a symbol (π) or Unicode code (U+03C0)');
+                return;
+            }
+            
+            // Validate hex digits
+            const hexPart = normalizedCode.substring(3);
+            if (!/^[0-9A-F]{4,}$/.test(hexPart)) {
+                alert('Invalid Unicode code. Please use valid hexadecimal digits.');
+                return;
+            }
+        }
+        
+        // Insert the normalized code
+        const elementIndex = this.elements.findIndex(element => element.id === elementId);
+        if (elementIndex !== -1) {
+            const element = this.elements[elementIndex];
+            element.value.text += normalizedCode;
+            
+            // Update the text input field with display version
+            const card = document.querySelector(`[data-element-id="${elementId}"]`);
+            const textInput = card?.querySelector('.text-input');
+            if (textInput) {
+                textInput.value = this.convertUnicodeForDisplay(element.value.text);
+                
+                // Update the formatted display overlay if it's visible
+                const container = textInput.parentNode;
+                const overlay = container.querySelector('.text-display-overlay');
+                if (overlay && overlay.style.display !== 'none') {
+                    // Apply dynamic formatting styles based on element scale
+                    if (element && element.value.scale !== undefined) {
+                        this.applyDynamicFormattingStyles(overlay, element.value.scale);
+                    }
+                    const formattedHTML = this.convertTextToHTMLFormatting(textInput.value);
+                    overlay.innerHTML = formattedHTML;
+                }
+            }
+            
+            // Close the dropdown
+            const dropdown = card?.querySelector('.symbol-dropdown-menu');
+            if (dropdown) {
+                dropdown.style.display = 'none';
+            }
+            
             this.updateOutput();
         }
     }
 
 
+
+    // Convert Unicode codes to display characters for preview
+    convertUnicodeForDisplay(text) {
+        if (!text) return text;
+        
+        // Convert AutoCAD formatting codes to visual formatting (handle nested codes)
+        // Process multiple times to handle nested formatting like %%O%%U text %%U%%O
+        let previousText;
+        do {
+            previousText = text;
+            
+            // Convert AutoCAD formatting codes - handle one layer at a time
+            text = text.replace(/%%O([^%]*?)%%O/g, (match, content) => {
+                // Apply overline to each character in content
+                return Array.from(content).map(char => {
+                    // Don't add overline if it's already a combining character
+                    if (char === '\u0305' || char === '\u0332' || char === '\u0336') {
+                        return char;
+                    }
+                    return char + '\u0305';
+                }).join('');
+            });
+            
+            text = text.replace(/%%U([^%]*?)%%U/g, (match, content) => {
+                // Apply underline to each character in content
+                return Array.from(content).map(char => {
+                    // Don't add underline if it's already a combining character
+                    if (char === '\u0305' || char === '\u0332' || char === '\u0336') {
+                        return char;
+                    }
+                    return char + '\u0332';
+                }).join('');
+            });
+            
+            text = text.replace(/%%K([^%]*?)%%K/g, (match, content) => {
+                // Apply strikethrough to each character in content
+                return Array.from(content).map(char => {
+                    // Don't add strikethrough if it's already a combining character
+                    if (char === '\u0305' || char === '\u0332' || char === '\u0336') {
+                        return char;
+                    }
+                    return char + '\u0336';
+                }).join('');
+            });
+            
+        } while (text !== previousText && text.includes('%%')); // Continue until no more changes or no more %% codes
+        
+        // Convert AutoCAD special codes
+        text = text.replace(/%%C/g, 'Ø'); // Diameter
+        text = text.replace(/%%D/g, '°'); // Degree  
+        text = text.replace(/%%P/g, '±'); // Plus/minus
+        
+        // Convert Unicode codes like \U+00B0 to actual characters
+        text = text.replace(/\\U\+([0-9A-Fa-f]{4,})/g, (match, hex) => {
+            try {
+                return String.fromCharCode(parseInt(hex, 16));
+            } catch (e) {
+                return match; // Return original if conversion fails
+            }
+        });
+        
+        return text;
+    }
+
+    // Convert display characters back to Unicode codes for storage
+    convertDisplayForStorage(text) {
+        if (!text) return text;
+        
+        // Convert visual formatting back to AutoCAD codes
+        // Handle combining characters for formatting
+        text = text.replace(/(.)\u0305/g, '$1'); // Remove combining overline (will be wrapped with %%O)
+        text = text.replace(/(.)\u0332/g, '$1'); // Remove combining underline (will be wrapped with %%U)
+        text = text.replace(/(.)\u0336/g, '$1'); // Remove combining strikethrough (will be wrapped with %%K)
+        
+        // Convert AutoCAD special characters back to codes
+        text = text.replace(/Ø/g, '%%C'); // Diameter
+        text = text.replace(/°/g, '%%D'); // Degree (prefer AutoCAD code for degree)
+        text = text.replace(/±/g, '%%P'); // Plus/minus
+        
+        // Convert common Unicode characters back to codes
+        // Create a mapping of characters to Unicode codes
+        const charToUnicode = {
+            '°': '\\U+00B0',  // Degree (fallback if not caught by AutoCAD code)
+            '×': '\\U+00D7',  // Multiplication
+            '÷': '\\U+00F7',  // Division
+            'ø': '\\U+00F8',  // Diameter (lowercase)
+            'α': '\\U+03B1',  // Alpha
+            'β': '\\U+03B2',  // Beta
+            'Δ': '\\U+0394',  // Delta
+            'Ω': '\\U+03A9',  // Omega
+            'π': '\\U+03C0',  // Pi
+            'σ': '\\U+03C3',  // Sigma
+            '←': '\\U+2190',  // Left arrow
+            '→': '\\U+2192',  // Right arrow
+            '↑': '\\U+2191',  // Up arrow
+            '↓': '\\U+2193',  // Down arrow
+            '○': '\\U+25CB',  // White circle
+            '●': '\\U+25CF',  // Black circle
+            '□': '\\U+25A1',  // White square
+            '■': '\\U+25A0'   // Black square
+        };
+        
+        // Replace characters with their Unicode codes
+        Object.entries(charToUnicode).forEach(([char, code]) => {
+            text = text.replace(new RegExp(char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), code);
+        });
+        
+        return text;
+    }
+
+    // Convert Unicode codes to display characters for canvas preview (no combining characters)
+    convertUnicodeForCanvas(text) {
+        if (!text) return text;
+        
+        // Process AutoCAD formatting codes multiple times to handle nested codes
+        let previousText;
+        do {
+            previousText = text;
+            
+            // Remove AutoCAD formatting codes and just return the content
+            text = text.replace(/%%O([^%]*?)%%O/g, '$1'); // Remove overscore codes, keep content
+            text = text.replace(/%%U([^%]*?)%%U/g, '$1'); // Remove underscore codes, keep content  
+            text = text.replace(/%%K([^%]*?)%%K/g, '$1'); // Remove strikethrough codes, keep content
+            
+        } while (text !== previousText && text.includes('%%')); // Continue until no more changes or no more %% codes
+        
+        // Convert AutoCAD special codes
+        text = text.replace(/%%C/g, 'Ø'); // Diameter
+        text = text.replace(/%%D/g, '°'); // Degree  
+        text = text.replace(/%%P/g, '±'); // Plus/minus
+        
+        // Convert Unicode escape sequences to actual characters
+        text = text.replace(/\\U\+([0-9A-Fa-f]{4,})/g, (match, hex) => {
+            try {
+                return String.fromCodePoint(parseInt(hex, 16));
+            } catch (e) {
+                return match; // Return original if conversion fails
+            }
+        });
+        
+        return text;
+    }
 
     generateLinCode() {
         const elementsCount = this.elements.length;
@@ -2818,11 +3836,12 @@ class LineTypeBuilder {
     }
 
     copyCode() {
-        const code = this.generateLinCode();
-        if (code.startsWith('; ERROR:')) {
-            this.showNotification('Cannot copy: Fix errors first');
+        if (!this.validateLineType()) {
+            this.showNotification('Cannot copy: Fix AutoCAD errors first');
             return;
         }
+        
+        const code = this.generateLinCode();
         
         this.outputCode.select();
         this.outputCode.setSelectionRange(0, 99999); // For mobile devices
@@ -2836,14 +3855,14 @@ class LineTypeBuilder {
     }
 
     downloadLinFile() {
-        const code = this.generateLinCode();
-        if (!code.trim()) {
-            this.showNotification('No line type to download');
+        if (!this.validateLineType()) {
+            this.showNotification('Cannot download: Fix AutoCAD errors first');
             return;
         }
         
-        if (code.startsWith('; ERROR:')) {
-            this.showNotification('Cannot download: Fix errors first');
+        const code = this.generateLinCode();
+        if (!code.trim()) {
+            this.showNotification('No line type to download');
             return;
         }
         
@@ -2924,29 +3943,16 @@ class LineTypeBuilder {
     reorderElements(fromIndex, toIndex) {
         if (fromIndex === toIndex) return;
 
-        const movedElement = this.elements[fromIndex];
-        
-        // Validate first position constraint
-        if (toIndex === 0 && movedElement.type !== 'dash') {
-            this.showNotification('AutoCAD Requirement: First element must be a dash', 'error');
-            return;
-        }
-        
-        // Validate that we're not moving a non-dash to position 0
-        if (toIndex === 0 && (movedElement.type === 'dot' || movedElement.type === 'text')) {
-            this.showNotification('AutoCAD Requirement: First element must be a visible dash', 'error');
-            return;
-        }
-
-        // Remove the element from its current position
+        // Always allow the reorder
         const [element] = this.elements.splice(fromIndex, 1);
-        
-        // Insert it at the new position
         this.elements.splice(toIndex, 0, element);
         
         // Re-render the cards and update output
         this.renderCards();
         this.updateOutput();
+        
+        // Validate after reorder (show banner if needed)
+        this.validateLineType();
     }
 
     // Click and Hold functionality for increment buttons

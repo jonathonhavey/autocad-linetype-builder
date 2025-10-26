@@ -176,6 +176,47 @@ nav p {
     background: #5a6268;
 }
 
+/* Persistent Error Banner */
+.error-banner {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    color: white;
+    padding: 12px 20px;
+    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
+    z-index: 1000;
+    position: sticky;
+    top: 0;
+    animation: slideDown 0.3s ease;
+}
+
+.error-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.error-icon {
+    font-size: 18px;
+    animation: pulse 2s infinite;
+}
+
+.error-message {
+    font-weight: 500;
+    font-size: 14px;
+}
+
+@keyframes slideDown {
+    from { transform: translateY(-100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
 /* Main App Container - Vertical Sandwich Layout */
 .app-container {
     display: flex;
@@ -778,7 +819,7 @@ input[type="number"] {
     margin-bottom: 0.5rem;
 }
 
-.case-btn, .center-btn {
+.case-btn, .center-btn, .format-btn {
     background: #f8f9fa;
     border: 1px solid #ddd;
     border-radius: 3px;
@@ -789,13 +830,13 @@ input[type="number"] {
     color: #666;
 }
 
-.case-btn:hover, .center-btn:hover {
+.case-btn:hover, .center-btn:hover, .format-btn:hover {
     background: #e9ecef;
     border-color: #2c5aa0;
     color: #2c5aa0;
 }
 
-.case-btn:active, .center-btn:active {
+.case-btn:active, .center-btn:active, .format-btn:active {
     background: #2c5aa0;
     color: white;
     transform: scale(0.95);
@@ -814,6 +855,13 @@ input[type="number"] {
     transform: scale(1.02);
 }
 
+/* Text input container */
+.text-input-container {
+    position: relative;
+    width: 100%;
+    min-height: 2.5rem; /* Ensure adequate height for clicking */
+}
+
 .text-input, .style-input {
     width: 100%;
     padding: 0.5rem;
@@ -821,11 +869,231 @@ input[type="number"] {
     border-radius: 4px;
     font-size: 0.9rem;
     transition: border-color 0.3s ease;
+    min-height: 1.5rem; /* Ensure minimum clickable height */
+    box-sizing: border-box;
+    position: relative;
+    z-index: 2; /* Ensure input is above overlay by default */
+    line-height: 1.5; /* Match overlay line-height exactly */
+    font-family: Arial, sans-serif; /* Match overlay font exactly */
 }
 
 .text-input:focus, .style-input:focus {
     outline: none;
     border-color: #2c5aa0;
+}
+
+/* Text display overlay for consistent formatting */
+.text-display-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 0.5rem;
+    border: 2px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    background: white;
+    pointer-events: auto; /* Allow clicking to switch back to input */
+    white-space: pre;
+    overflow: hidden;
+    line-height: 1.5;
+    z-index: 1; /* Below the input field by default */
+    cursor: text; /* Show text cursor to indicate it's editable */
+    
+    /* Match input field styling exactly */
+    font-family: Arial, sans-serif;
+    color: #333;
+    box-sizing: border-box;
+    min-height: 1.5rem; /* Match input field minimum height */
+    
+    /* Disable all native text decorations - we use CSS lines instead */
+    text-decoration: none !important;
+    
+    /* Use visibility instead of display to prevent layout shifts */
+    visibility: hidden;
+    display: block;
+}
+
+/* Ensure all text elements disable native text decoration */
+.text-display-overlay * {
+    text-decoration: none !important;
+}
+
+.text-display-overlay:empty::before {
+    content: attr(placeholder);
+    color: #999;
+}
+
+/* Consistent formatting line positioning for text inputs */
+.text-input {
+    /* Use Arial font for consistent combining character positioning */
+    font-family: Arial, sans-serif !important;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    
+    /* Optimize text rendering for consistent formatting */
+    text-rendering: geometricPrecision;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    
+    /* Force consistent metrics regardless of character case */
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "kern" 1;
+    
+    /* Ensure consistent baseline and character positioning */
+    vertical-align: baseline;
+    
+    /* Prevent text transformations that might affect combining characters */
+    text-transform: none;
+    letter-spacing: 0;
+    word-spacing: normal;
+    
+    /* Disable native text decorations since we use CSS lines instead */
+    text-decoration: none !important;
+    
+    /* Ensure combining characters position relative to the font's cap height */
+    font-synthesis: none;
+}
+
+/* Force consistent positioning for combining characters (overline, underline, strikethrough) */
+.text-input {
+    /* The key is using a font that positions combining characters consistently */
+    /* Arial has good combining character support with consistent positioning */
+    font-stretch: normal;
+    font-style: normal;
+    font-weight: normal;
+}
+
+/* Simple text input styling */
+.text-input {
+    /* Position relative for potential overlay elements */
+    position: relative;
+}
+
+/* Ensure preview canvas also uses consistent font metrics */
+.preview-canvas {
+    font-family: Arial, sans-serif !important;
+}
+
+/* Disabled old text-decoration rules - we now use CSS lines instead for all formatting */
+
+/* Webkit-specific fixes for combining character positioning */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+    .text-input {
+        -webkit-text-stroke: 0;
+        -webkit-font-feature-settings: "kern" 1;
+        font-feature-settings: "kern" 1; /* Standard property for compatibility */
+    }
+}
+
+/* Simplified text formatting - removed complex CSS formatting system */
+
+/* Symbol controls */
+.symbol-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.symbol-btn {
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.2s ease;
+    color: #495057;
+    margin-left: 0.25rem;
+}
+
+.symbol-btn:hover {
+    background: #e9ecef;
+    border-color: #adb5bd;
+    transform: scale(1.02);
+}
+
+.symbol-dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: white;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 1000;
+    min-width: 320px;
+    max-height: 400px;
+    overflow-y: auto;
+    margin-top: 0.25rem;
+}
+
+.symbol-header {
+    background: #f8f9fa;
+    padding: 0.75rem;
+    border-bottom: 1px solid #dee2e6;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #495057;
+}
+
+.symbol-grid-main {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(45px, 1fr));
+    gap: 3px;
+    padding: 0.75rem;
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.symbol-item-btn {
+    background: white;
+    border: 1px solid #dee2e6;
+    padding: 0.6rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    font-weight: 500;
+}
+
+.symbol-item-btn:hover {
+    background: #e3f2fd;
+    border-color: #2c5aa0;
+    transform: scale(1.05);
+    box-shadow: 0 2px 4px rgba(44, 90, 160, 0.2);
+}
+
+.custom-symbol-btn {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    padding: 0.4rem 0.6rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: #856404;
+    transition: all 0.2s ease;
+    pointer-events: auto;
+    z-index: 10;
+    position: relative;
+    font-weight: 500;
+}
+
+.symbol-header .custom-symbol-btn {
+    margin: 0;
+}
+
+.custom-symbol-btn:hover {
+    background: #ffc107;
+    color: white;
+    transform: scale(1.02);
 }
 
 .rotation-row {
