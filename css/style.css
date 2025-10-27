@@ -1347,11 +1347,21 @@ footer {
     font-size: 0.9rem;
 }
 
+/* Hide SEO content from users but keep for search engines */
+.seo-hidden {
+    position: absolute;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+}
+
 .copyright {
     text-align: center;
-    margin-top: 2rem;
-    padding-top: 1rem;
-    border-top: 1px solid #34495e;
+    margin: 0;
+    padding: 1rem 0;
     color: #95a5a6;
     font-size: 0.9rem;
 }
