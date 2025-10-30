@@ -1,3 +1,234 @@
+/* Toolbar group for consistent button alignment */
+.toolbar-group {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+/* Unified toolbar button style */
+.toolbar-btn {
+    background: #34495e;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.3s;
+    font-family: inherit;
+    appearance: none;
+    outline: none;
+}
+.toolbar-btn:hover, .toolbar-btn:focus {
+    background: #4a6741;
+}
+
+/* Make select look like a button */
+select.toolbar-btn {
+    padding-right: 2.2em;
+    background-image: url('data:image/svg+xml;utf8,<svg fill="white" height="16" viewBox="0 0 20 20" width="16" xmlns="http://www.w3.org/2000/svg"><path d="M7.293 8.293a1 1 0 011.414 0L10 9.586l1.293-1.293a1 1 0 111.414 1.414l-2 2a1 1 0 01-1.414 0l-2-2a1 1 0 010-1.414z"/></svg>');
+    background-repeat: no-repeat;
+    background-position: right 0.7em center;
+    background-size: 1em;
+    min-width: 110px;
+}
+/* Expandable section for text card options */
+.expand-btn {
+    margin: 1rem 0 0.5rem 0;
+    background: #e6e6e6;
+    border: none;
+    border-radius: 4px;
+    padding: 0.3rem 0.8rem;
+    font-size: 0.95em;
+    cursor: pointer;
+    color: #333;
+    transition: background 0.2s;
+}
+.expand-btn:hover {
+    background: #d0d0d0;
+}
+.expandable-section {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s cubic-bezier(0.4,0,0.2,1);
+    background: #f8f8f8;
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+    padding: 0 0.5rem;
+}
+.expandable-section.expanded {
+    max-height: 500px;
+    padding: 1rem 0.5rem;
+}
+/* Side-by-side layout for preview and output */
+.side-by-side {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+@media (min-width: 1000px) {
+    .side-by-side {
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 2.5rem;
+    }
+    .preview-section, .output-section {
+        flex: 1 1 0;
+        min-width: 0;
+        max-width: 50%;
+    }
+    .preview-section {
+        margin-right: 0;
+    }
+    .output-section {
+        margin-left: 0;
+    }
+}
+/* Help dropdown styles */
+.help-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.help-menu {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    min-width: 350px;
+    background: #fff;
+    border: 1px solid #dcdcdc;
+    border-radius: 6px;
+    padding: 0.25rem;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+    display: none;
+    z-index: 1000;
+}
+
+.help-dropdown.is-open .help-menu {
+    display: block;
+}
+
+/* Open Help menu on hover or focus within */
+.help-dropdown:hover .help-menu,
+.help-dropdown:focus-within .help-menu {
+    display: block;
+}
+
+.help-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    border-radius: 4px;
+    font: inherit;
+    color: #222;
+    text-decoration: none;
+}
+
+.help-item:hover,
+.help-item:focus {
+    background: #f2f2f2;
+    outline: none;
+}
+/* Presets dropdown styles - match Help dropdown visually */
+.presets-dropdown {
+    position: relative;
+    display: inline-block;
+}
+.presets-menu {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    min-width: 260px;
+    background: #fff;
+    border: 1px solid #dcdcdc;
+    border-radius: 6px;
+    padding: 0.25rem;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+    display: none;
+    z-index: 1000;
+}
+.presets-dropdown.is-open .presets-menu {
+    display: block;
+}
+
+/* Open Presets menu on hover or focus within */
+.presets-dropdown:hover .presets-menu,
+.presets-dropdown:focus-within .presets-menu {
+    display: block;
+}
+
+/* Modal styles */
+.modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    display: none; /* toggled via inline style or class */
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    padding: 2rem;
+}
+.modal.show { display: flex; }
+.modal-dialog {
+    background: #fff;
+    width: min(900px, 92vw);
+    max-height: 84vh;
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #e9e9e9;
+}
+.modal-header h3 {
+    margin: 0;
+    font-size: 1.2rem;
+}
+.modal-close {
+    background: transparent;
+    border: none;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    color: #666;
+}
+.modal-close:hover { color: #333; }
+.modal-body {
+    padding: 1rem 1.25rem;
+    overflow: auto;
+    line-height: 1.35; /* tighter line spacing within paragraphs */
+}
+.modal-body p { margin-bottom: 0.5rem; /* reduce space between paragraphs */ }
+.modal-body ul { margin-left: 1.25rem; }
+.preset-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    border-radius: 4px;
+    font: inherit;
+    color: #222;
+    text-decoration: none;
+}
+.preset-item:hover,
+.preset-item:focus {
+    background: #f2f2f2;
+    outline: none;
+}
 /* Reset and base styles */
 * {
     margin: 0;
@@ -1103,8 +1334,8 @@ input[type="number"] {
 }
 
 .rotation-type-select {
-    width: 50px;
-    padding: 0.5rem;
+    width: 60px;
+    padding: 0.2rem;
     border: 2px solid #ddd;
     border-radius: 4px;
     font-size: 0.9rem;
@@ -1169,7 +1400,7 @@ input[type="number"] {
 }
 
 .angle-input {
-    width: 80px;
+    width: 60px;
     padding: 0.5rem;
     border: 2px solid #ddd;
     border-radius: 4px 0 0 4px;

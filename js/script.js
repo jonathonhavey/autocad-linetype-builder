@@ -1,3 +1,130 @@
+// Help dropdown and Presets logic
+document.addEventListener('DOMContentLoaded', function () {
+    // Help button (opens modal)
+    const helpOpenBtn = document.getElementById('helpOpenBtn');
+    if (helpOpenBtn) {
+        helpOpenBtn.addEventListener('click', function () {
+            openHelpModal('Help', buildHelpHTML());
+        });
+    }
+
+    // Help modal helpers
+    function openHelpModal(title, html) {
+        const modal = document.getElementById('helpModal');
+        const titleEl = document.getElementById('helpModalTitle');
+        const bodyEl = document.getElementById('helpModalBody');
+        const closeBtn = document.getElementById('helpModalClose');
+        if (!modal || !titleEl || !bodyEl || !closeBtn) return;
+        titleEl.textContent = title || 'Help';
+        bodyEl.innerHTML = html || '';
+        modal.style.display = 'flex';
+        modal.classList.add('show');
+        modal.setAttribute('aria-hidden', 'false');
+        closeBtn.focus();
+        const onKey = (e) => {
+            if (e.key === 'Escape') {
+                closeHelpModal();
+            }
+        };
+        document.addEventListener('keydown', onKey, { once: true });
+        const onBackdrop = (e) => {
+            if (e.target === modal) closeHelpModal();
+        };
+        modal.addEventListener('click', onBackdrop, { once: true });
+        closeBtn.addEventListener('click', closeHelpModal, { once: true });
+    }
+
+    function closeHelpModal() {
+        const modal = document.getElementById('helpModal');
+        if (!modal) return;
+        modal.classList.remove('show');
+        modal.style.display = 'none';
+        modal.setAttribute('aria-hidden', 'true');
+    }
+    // Presets Dropdown (custom, matches Help)
+    const presetsDropdown = document.getElementById('presetsDropdown');
+    const presetsBtn = document.getElementById('presetsBtn');
+    const presetsMenu = document.getElementById('presetsMenu');
+    if (presetsDropdown && presetsBtn && presetsMenu) {
+        // Populate from JSON
+        fetch('data/presets.json')
+            .then(response => response.json())
+            .then(presets => {
+                presetsMenu.innerHTML = '';
+                presets.forEach((preset, idx) => {
+                    const item = document.createElement('button');
+                    item.className = 'preset-item';
+                    item.type = 'button';
+                    item.textContent = preset.label;
+                    item.setAttribute('role', 'menuitem');
+                    item.tabIndex = -1;
+                    item.addEventListener('click', () => {
+                        // Open the import bar if it's not visible
+                        const importBar = document.getElementById('importBar');
+                        if (importBar && importBar.style.display === 'none') {
+                            importBar.style.display = '';
+                        }
+                        const importInput = document.getElementById('importInput');
+                        if (importInput) {
+                            importInput.value = preset.line1 + '\n' + preset.line2;
+                            importInput.focus();
+                        }
+                        closePresets();
+                    });
+                    presetsMenu.appendChild(item);
+                });
+            });
+
+        function openPresets() {
+            presetsDropdown.classList.add('is-open');
+            presetsBtn.setAttribute('aria-expanded', 'true');
+            const firstItem = presetsMenu.querySelector('.preset-item');
+            if (firstItem) firstItem.focus();
+        }
+        function closePresets() {
+            presetsDropdown.classList.remove('is-open');
+            presetsBtn.setAttribute('aria-expanded', 'false');
+        }
+        // Hover/focus will display via CSS; keep ARIA in sync
+        presetsDropdown.addEventListener('mouseenter', () => presetsBtn.setAttribute('aria-expanded', 'true'));
+        presetsDropdown.addEventListener('mouseleave', () => {
+            if (!presetsDropdown.classList.contains('is-open')) presetsBtn.setAttribute('aria-expanded', 'false');
+        });
+        presetsDropdown.addEventListener('focusin', () => presetsBtn.setAttribute('aria-expanded', 'true'));
+        presetsDropdown.addEventListener('focusout', (e) => {
+            if (!presetsDropdown.contains(e.relatedTarget) && !presetsDropdown.classList.contains('is-open')) {
+                presetsBtn.setAttribute('aria-expanded', 'false');
+            }
+        });
+        document.addEventListener('click', (e) => {
+            if (!presetsDropdown.contains(e.target)) closePresets();
+        });
+        presetsDropdown.addEventListener('keydown', (e) => {
+            const items = Array.from(presetsMenu.querySelectorAll('.preset-item'));
+            const idx = items.indexOf(document.activeElement);
+            if (e.key === 'Escape') {
+                closePresets();
+                presetsBtn.focus();
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (idx < items.length - 1) items[idx + 1].focus();
+                else items[0].focus();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (idx > 0) items[idx - 1].focus();
+                else items[items.length - 1].focus();
+            }
+        });
+        presetsBtn.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                openPresets();
+            }
+        });
+    }
+            // (Old select-based presets logic removed — presets are handled by the custom dropdown code above)
+                // (Presets logic replaced by custom dropdown above)
+});
 // AutoCAD Line Type Builder
 class LineTypeBuilder {
     constructor() {
@@ -17,7 +144,7 @@ class LineTypeBuilder {
         this.currentShape = 'line';
         
         // Line weight
-        this.lineWeight = 1.0;
+        this.lineWeight = 3.0;
         
         // Preview navigation
         this.zoomLevel = 1.0;
@@ -427,51 +554,55 @@ class LineTypeBuilder {
                                 </div>
                             </div>
                         </div>
-                        <div class="control-group">
-                            <div class="offset-label-row">
-                                <label>Offset</label>
-                                <button type="button" class="center-btn" onclick="lineTypeBuilder.centerText(${element.id})" title="Center text on line">Center</button>
-                            </div>
-                            <div class="offset-row">
-                                <div class="offset-group">
-                                    <span class="offset-label">X:</span>
-                                    <div class="number-input">
-                                        <input type="number" 
-                                               value="${element.value.xOffset}" 
-                                               step="0.01" 
-                                               class="offset-input"
-                                               onchange="lineTypeBuilder.updateTextProperty(${element.id}, 'xOffset', this.value)"
-                                               oninput="lineTypeBuilder.updateTextProperty(${element.id}, 'xOffset', this.value)">
-                                        <div class="number-buttons">
-                                            <button type="button" class="number-btn up-btn" onclick="lineTypeBuilder.incrementTextProperty(${element.id}, 'xOffset', 0.01)">▲</button>
-                                            <button type="button" class="number-btn down-btn" onclick="lineTypeBuilder.incrementTextProperty(${element.id}, 'xOffset', -0.01)">▼</button>
+
+                        <button type="button" class="expand-btn" onclick="this.nextElementSibling.classList.toggle('expanded')">Position & Text Style</button>
+                        <div class="expandable-section">
+                            <div class="control-group">
+                                <div class="offset-label-row">
+                                    <label>Offset</label>
+                                    <button type="button" class="center-btn" onclick="lineTypeBuilder.centerText(${element.id})" title="Center text on line">Center</button>
+                                </div>
+                                <div class="offset-row">
+                                    <div class="offset-group">
+                                        <span class="offset-label">X:</span>
+                                        <div class="number-input">
+                                            <input type="number" 
+                                                   value="${element.value.xOffset}" 
+                                                   step="0.01" 
+                                                   class="offset-input"
+                                                   onchange="lineTypeBuilder.updateTextProperty(${element.id}, 'xOffset', this.value)"
+                                                   oninput="lineTypeBuilder.updateTextProperty(${element.id}, 'xOffset', this.value)">
+                                            <div class="number-buttons">
+                                                <button type="button" class="number-btn up-btn" onclick="lineTypeBuilder.incrementTextProperty(${element.id}, 'xOffset', 0.01)">▲</button>
+                                                <button type="button" class="number-btn down-btn" onclick="lineTypeBuilder.incrementTextProperty(${element.id}, 'xOffset', -0.01)">▼</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="offset-group">
+                                        <span class="offset-label">Y:</span>
+                                        <div class="number-input">
+                                            <input type="number" 
+                                                   value="${element.value.yOffset}" 
+                                                   step="0.01" 
+                                                   class="offset-input"
+                                                   onchange="lineTypeBuilder.updateTextProperty(${element.id}, 'yOffset', this.value)"
+                                                   oninput="lineTypeBuilder.updateTextProperty(${element.id}, 'yOffset', this.value)">
+                                            <div class="number-buttons">
+                                                <button type="button" class="number-btn up-btn" onclick="lineTypeBuilder.incrementTextProperty(${element.id}, 'yOffset', 0.01)">▲</button>
+                                                <button type="button" class="number-btn down-btn" onclick="lineTypeBuilder.incrementTextProperty(${element.id}, 'yOffset', -0.01)">▼</button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="offset-group">
-                                    <span class="offset-label">Y:</span>
-                                    <div class="number-input">
-                                        <input type="number" 
-                                               value="${element.value.yOffset}" 
-                                               step="0.01" 
-                                               class="offset-input"
-                                               onchange="lineTypeBuilder.updateTextProperty(${element.id}, 'yOffset', this.value)"
-                                               oninput="lineTypeBuilder.updateTextProperty(${element.id}, 'yOffset', this.value)">
-                                        <div class="number-buttons">
-                                            <button type="button" class="number-btn up-btn" onclick="lineTypeBuilder.incrementTextProperty(${element.id}, 'yOffset', 0.01)">▲</button>
-                                            <button type="button" class="number-btn down-btn" onclick="lineTypeBuilder.incrementTextProperty(${element.id}, 'yOffset', -0.01)">▼</button>
-                                        </div>
-                                    </div>
-                                </div>
                             </div>
-                        </div>
-                        <div class="control-group">
-                            <label>Style</label>
-                            <input type="text" 
-                                   value="${element.value.style}" 
-                                   class="style-input"
-                                   onchange="lineTypeBuilder.updateTextProperty(${element.id}, 'style', this.value)"
-                                   oninput="lineTypeBuilder.updateTextProperty(${element.id}, 'style', this.value)">
+                            <div class="control-group">
+                                <label>Style</label>
+                                <input type="text" 
+                                       value="${element.value.style}" 
+                                       class="style-input"
+                                       onchange="lineTypeBuilder.updateTextProperty(${element.id}, 'style', this.value)"
+                                       oninput="lineTypeBuilder.updateTextProperty(${element.id}, 'style', this.value)">
+                            </div>
                         </div>
                     </div>
                 `;
@@ -1521,7 +1652,7 @@ class LineTypeBuilder {
                 // Line bounds - use a simpler approach that matches grid coordinates
                 // Line is positioned at Y=0 in the grid coordinate system
                 const patternWidthPx = patternLength * scale;
-                const repetitions = Math.max(1, 8); // Show at least 8 repetitions for good view
+                const repetitions = Math.max(1, 4.5); // Show at least 8 repetitions for good view
                 const lineWidth = repetitions * patternWidthPx;
                 
                 // Check if there are text elements that might extend bounds
@@ -1986,7 +2117,7 @@ class LineTypeBuilder {
         
         // Calculate how many repetitions to show for good visualization
         const patternWidthPx = patternLength * scale;
-        const repetitions = Math.max(1, 8); // Show at least 8 repetitions
+        const repetitions = Math.max(1, 4); // Show at least 5 repetitions
         
         for (let rep = 0; rep < repetitions; rep++) {
             const repStartX = startX + (rep * patternLength * scale);
@@ -4106,6 +4237,53 @@ class LineTypeBuilder {
         
         ctx.restore();
     }
+}
+
+// Compose Help modal HTML content
+function buildHelpHTML() {
+    return (
+        '<section>' +
+            '<p>This tool helps you create custom AutoCAD linetypes by assembling dashes, dots, and text elements into a pattern recognizable by AutoCAD.</p>' +
+            '<p>Build your custom linetype by adding elements and configuring their properties, then generate a linetype script (.lin) for use in AutoCAD.</p>' +
+            '<p>Select one of the sample presets to get started!</p>' +
+        '</section>' +
+        '<section>' +
+            '<h4>Linetype Guidelines and Rules</h4>' +
+            '<ul>' +
+                '<li>Back to back text elements will display final text element</li>' +
+                '<li>No dot-dot or dot-text-dot sequences.</li>' +
+                '<li>Minimum of 2 elements, maximum of 12 elements.</li>' +
+                '<li>Linetypes must start with a visible dash.</li>' +
+            '<p></p>'+
+            '</ul>' +
+        '</section>' +
+        '<section>' +
+            '<h4>TTF Text Style Info</h4>' +
+            '<ul>'+
+                '<li>To use custom Unicode characters in linetypes, use a <u>TrueType Font (TTF)</u> text style in AutoCAD.</li>' +
+                '<li>If you use a <u>shape font (SHX)</u>, unrecognized unicodes will display as a "?".</li>' +
+            '</ul>' +
+            '<p> </p>'+
+        '</section>' +
+        '<section>' +
+            '<h4>How to use this tool</h4>' +
+            '<p> 1. Use the Design Elements to create your custom line-type.</p>' +
+            '<p> 2. Edit the Line type name and description.</p>' +
+            '<p> 3. Copy the generated .lin code and paste into an existing .lin file (.lin files are editable in notepad).</p>' +
+            '<p> 4. Alternatively, download the .lin file and save to a safe folder on your pc.</p>' +
+            '<p> 5. use the LINETYPE command to open the Linetype Manager. </p>'+
+            '<p> 6. Select the Load.. button, locate your .lin file, and chose your custom linetype .</p>' +
+            '<p> </p>'+
+        '</section>' +
+        '<section>' +
+            '<h4>Useful AutoCAD Links</h4>' +
+            '<ul>' +
+                '<li><a href="https://help.autodesk.com/view/ACD/2023/ENU/?guid=GUID-5A6E6759-8A9A-4A8A-9AEE-EE9DB72F792D" target="_blank" rel="noopener">General info on linetype definitions</a></li>' +
+                '<li><a href="https://help.autodesk.com/view/ACD/2023/ENU/?guid=GUID-EF1DF0A9-2088-487C-8085-16FEE6425405" target="_blank" rel="noopener">Simple Linetype definitions</a></li>' +
+                '<li><a href="https://help.autodesk.com/view/ACD/2023/ENU/?guid=GUID-FEDCE7EB-4919-43AE-A54E-F3A293DD60CA" target="_blank" rel="noopener">Text in linetypes</a></li>' +
+            '</ul>' +
+        '</section>'
+    );
 }
 
 // Initialize the application

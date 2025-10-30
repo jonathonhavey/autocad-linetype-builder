@@ -1,0 +1,38 @@
+[
+  {
+    "label": "Text Line --TEXT--",
+    "line1": "*TEXT_LINE, Text Line ----TEXT----TEXT----TEXT----TEXT----TEXT----TEXT--",
+    "line2": "A,.5,-.2,[\"TEXT\",STANDARD,S=.1,R=0.0,X=-0.1,Y=-.05],-.25"
+  },
+  {
+    "label": "Hot Water Supply -- HW ---",
+    "line1": "*HOT_WATER_SUPPLY,Hot water supply ---- HW ---- HW ---- HW ----",
+    "line2": "A,.5,-.2,[\"HW\",STANDARD,S=.1,R=0.0,X=-0.1,Y=-.05],-.2"
+  },
+  {
+    "label": "Border __ __ . __ ",
+    "line1": "*BORDER,Border __ __ . __ __ . __ __ . __ __ . __ __ .",
+    "line2": "A,.5,-.25,.5,-.25,0,-.25"
+  },
+  {
+    "label": "Drain Line ----D----",
+    "line1": "*DRAIN_LINE,Drain line ----D----D----D----D----D----D--",
+    "line2": "A,.9,-.2,[\"D\",STANDARD,S=.1,R=0.0,X=-0,Y=-.05],-.2"
+  },
+  {
+    "label": "Building Line ___/___/",
+    "line1": "*BUILDINGLINE,_____/_____/_____/_____",
+    "line2": "A,0.3,0,[\"I\",STANDARD,s=0.14,r=45,x=0,y=0],-0.0000005"
+  },
+  {
+    "label": "Grass",
+    "line1": "*GRASS,Grass",
+    "line2": "A,.05,[\"\\|/\",STANDARD,x=0,y=.02,s=.02,u=0],.05"
+  },
+  {
+    "label": "Earth Hatch \\\\///\\\\",
+    "line1": "*EARTH,Earth Hatch \\\\///\\\\",
+    "line2": "A,0.33,[\"|\",STANDARD,S=0.05,R=45,X=-0.12,Y=-0.1],0.01,[\"|\",STANDARD,S=0.1,R=45,X=-0.07,Y=-0.1],0.01,[\"|\",STANDARD,S=0.1,R=45,X=-0.02,Y=-0.1],0.01,[\"|\",STANDARD,S=0.05,R=-45,X=-0.01,Y=-0.04],0.01,[\"|\",STANDARD,S=0.1,R=-45,X=0.04,Y=-0.1],0.01,[\"|\",STANDARD,S=0.1,R=-45,X=0.1,Y=-0.1]"
+  }
+  
+]

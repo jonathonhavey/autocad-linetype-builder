@@ -61,11 +61,20 @@
 <body>
     <header>
         <nav>
-            <h1>AutoCAD Line Type Builder</h1>
-            <p>Create custom .lin files for AutoCAD line types</p>
-            <div class="file-menu">
-                <button class="file-menu-btn" onclick="toggleImportBar()">Import</button>
-            </div>
+                        <h1>AutoCAD Line Type Builder</h1>
+                        <p>Create custom .lin files for AutoCAD line types</p>
+                        <div class="toolbar-group">
+                            <button class="toolbar-btn" onclick="toggleImportBar()">Import</button>
+                            <button id="helpOpenBtn" class="toolbar-btn" type="button">Help</button>
+                            <div class="presets-dropdown" id="presetsDropdown">
+                                <button id="presetsBtn" class="toolbar-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="presetsMenu">
+                                    Presets ▾
+                                </button>
+                                <div id="presetsMenu" class="presets-menu" role="menu" tabindex="-1" aria-labelledby="presetsBtn">
+                                    <!-- Preset items populated from data/presets.json -->
+                                </div>
+                            </div>
+                        </div>
         </nav>
         <div class="import-bar" id="importBar" style="display: none;">
             <button class="close-btn" onclick="closeImportBar()">×</button>
@@ -88,6 +97,7 @@
         </div>
     </div>
 
+
     <main class="app-container">
         <!-- Design Cards Section -->
         <section class="design-section">
@@ -99,75 +109,76 @@
             </div>
         </section>
 
-        <!-- Preview Section -->
-        <section class="preview-section">
-            <div class="section-header">
-                <h2>Preview</h2>
-                <div class="preview-controls">
-                    <div class="shape-selector">
-                        <label for="shapeSelect">Shape:</label>
-                        <select id="shapeSelect" onchange="lineTypeBuilder.changePreviewShape(this.value)">
-                            <option value="line">Line</option>
-                            <option value="rectangle">Rectangle</option>
-                            <option value="circle">Circle</option>
-                            <option value="triangle">Triangle</option>
-                        </select>
-                    </div>
+        <!-- Side-by-side layout for preview and output -->
+        <div class="side-by-side">
+            <!-- Preview Section -->
+            <section class="preview-section">
+                <div class="section-header">
+                    <h2>Preview</h2>
+                    <div class="preview-controls">
+                        <div class="shape-selector">
+                            <label for="shapeSelect">Shape:</label>
+                            <select id="shapeSelect" onchange="lineTypeBuilder.changePreviewShape(this.value)">
+                                <option value="line">Line</option>
+                                <option value="rectangle">Rectangle</option>
+                                <option value="circle">Circle</option>
+                                <option value="triangle">Triangle</option>
+                            </select>
+                        </div>
 
-                    <div class="line-weight-control">
-                        <label for="lineWeightSlider">Line Weight:</label>
-                        <input type="range" id="lineWeightSlider" min="0.5" max="5" step="0.1" value="1" 
-                               onchange="lineTypeBuilder.changeLineWeight(this.value)" 
-                               oninput="lineTypeBuilder.changeLineWeight(this.value)">
-                        <span id="lineWeightValue">1.0</span>
-                    </div>
+                        <div class="line-weight-control">
+                            <label for="lineWeightSlider">Line Weight:</label>
+                            <input type="range" id="lineWeightSlider" min="0.5" max="5" step="0.1" value="2" 
+                                   onchange="lineTypeBuilder.changeLineWeight(this.value)" 
+                                   oninput="lineTypeBuilder.changeLineWeight(this.value)">
+                            <span id="lineWeightValue">2.0</span>
+                        </div>
 
-                    <div class="zoom-controls">
-                        <button onclick="lineTypeBuilder.zoomIn()" title="Zoom In">🔍+</button>
-                        <button onclick="lineTypeBuilder.zoomOut()" title="Zoom Out">🔍-</button>
-                        <button onclick="lineTypeBuilder.zoomExtents()" title="Zoom Extents (or double-click)">⌂</button>
-                        <button onclick="lineTypeBuilder.toggleTextGuides()" title="Toggle Text Positioning Guides" style="display: none;">📍</button>
+                        <div class="zoom-controls">
+                            <button onclick="lineTypeBuilder.zoomIn()" title="Zoom In">🔍+</button>
+                            <button onclick="lineTypeBuilder.zoomOut()" title="Zoom Out">🔍-</button>
+                            <button onclick="lineTypeBuilder.zoomExtents()" title="Zoom Extents (or double-click)">⌂</button>
+                            <button onclick="lineTypeBuilder.toggleTextGuides()" title="Toggle Text Positioning Guides" style="display: none;">📍</button>
+                        </div>
                     </div>
                 </div>
-            </div>
-            <div class="preview-window">
-                <div class="grid-background"></div>
-                <div class="preview-content">
-                    <!-- Line preview will be rendered here -->
+                <div class="preview-window">
+                    <div class="grid-background"></div>
+                    <div class="preview-content">
+                        <!-- Line preview will be rendered here -->
+                    </div>
                 </div>
-            </div>
-        </section>
+            </section>
 
-        <!-- Settings and Output Section -->
-        <section class="output-section">
-            <div class="section-header">
-                <h2>Description and Export</h2>
-            </div>
-            
-            <div class="output-row">
-                <!-- Line Type Info -->
-                <div class="linetype-info">
-                    <div class="input-group">
-                        <label for="linetypeName">Line Type Name:</label>
-                        <input type="text" id="linetypeName" placeholder="MYLINETYPE" maxlength="31">
+            <!-- Settings and Output Section -->
+            <section class="output-section">
+                <div class="section-header">
+                    <h2>Description and Export</h2>
+                </div>
+                <div class="output-row">
+                    <!-- Line Type Info -->
+                    <div class="linetype-info">
+                        <div class="input-group">
+                            <label for="linetypeName">Line Type Name:</label>
+                            <input type="text" id="linetypeName" placeholder="MYLINETYPE" maxlength="31">
+                        </div>
+                        <div class="input-group">
+                            <label for="linetypeDesc">Description:</label>
+                            <input type="text" id="linetypeDesc" placeholder="Custom line type description">
+                        </div>
                     </div>
-                    <div class="input-group">
-                        <label for="linetypeDesc">Description:</label>
-                        <input type="text" id="linetypeDesc" placeholder="Custom line type description">
+                    <!-- Generated Code -->
+                    <div class="code-output">
+                        <h3>Generated .lin Code</h3>
+                        <textarea id="outputCode" readonly placeholder="Generated code will appear here..."></textarea>
+                        <div class="output-buttons">
+                            <button id="copyCodeBtn">Copy Code</button>
+                            <button id="downloadBtn">Download .lin File</button>
+                        </div>
                     </div>
                 </div>
-
-                <!-- Generated Code -->
-                <div class="code-output">
-                    <h3>Generated .lin Code</h3>
-                    <textarea id="outputCode" readonly placeholder="Generated code will appear here..."></textarea>
-                    <div class="output-buttons">
-                        <button id="copyCodeBtn">Copy Code</button>
-                        <button id="downloadBtn">Download .lin File</button>
-                    </div>
-                </div>
-            </div>
-        </section>
+            </section>
+        </div>
     </main>
 
     <footer>
@@ -186,19 +197,40 @@
                         <li>Import existing line type definitions</li>
                         <li>Validation for AutoCAD compatibility</li>
                         <li>Support for dashes, dots, and text elements</li>
+                        <li>Generate complex line patterns with ease</li>
+                        <li>build custom line types for AutoCAD</li>
+                        <li>linetype generator</li>
+                        <li>AutoCAD Linetype builder</li>
+                        <li>AutoCAD Linetype generator</li>
+                        <li>AutoCAD Linetype generation</li>
+                        <li>AutoCAD Line style Tool</li>
+                        <li>AutoCAD Line builder</li>
+                        <li>AutoCAD Line Generator</li>
+
                     </ul>
                 </div>
                 
                 <div class="footer-keywords">
-                    <p><strong>Keywords:</strong> AutoCAD linetype, .lin file generator, CAD line patterns, custom AutoCAD lines, dashed line creator, dotted line maker, AutoCAD tools, CAD utilities, technical drawing tools</p>
+                    <p><strong>Keywords:</strong> AutoCAD linetype, .lin file generator, CAD line patterns, custom AutoCAD lines, dashed line creator, dotted line maker, AutoCAD tools, CAD utilities, technical drawing tools, Linetype generator, linetype creator, line style, line tool, style, tool, text, linetype with text, create linetype with text, autocad linetype builder, custom autocad linetype</p>
                 </div>
             </div>
             
             <!-- Visible Copyright -->
-            <p class="copyright">© 2025 AutoCAD Line Type Builder - Free CAD Tool for Creating Custom Line Types</p>
+            <p class="copyright">© 2025 AutoCAD Line Type Builder - Create Custom Line Types for AutoCAD</p>
         </div>
     </footer>
 
     <script src="js/script.js"></script>
+    
+    <!-- Help Modal -->
+    <div id="helpModal" class="modal" aria-hidden="true" role="dialog" aria-labelledby="helpModalTitle" aria-modal="true" style="display:none;">
+        <div class="modal-dialog" role="document">
+            <div class="modal-header">
+                <h3 id="helpModalTitle">Help</h3>
+                <button id="helpModalClose" class="modal-close" aria-label="Close">×</button>
+            </div>
+            <div id="helpModalBody" class="modal-body"></div>
+        </div>
+    </div>
 </body>
 </html>
