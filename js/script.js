@@ -230,6 +230,8 @@ class LineTypeBuilder {
         this.isRestoringHistory = false;
         this._lastSnapshotStr = null;
         this.init();
+        // Preload Simplex font to avoid fallback flashes (FOIT/FOUT) in canvas text.
+        this.preloadSimplexFont();
     }
 
     // Determine effective theme (manual override via data-theme or system preference)
@@ -332,6 +334,24 @@ class LineTypeBuilder {
 
         // Observe preview container size changes to keep canvas in sync
         this.setupPreviewResizeObserver();
+    }
+
+    /**
+     * Attempt to preload the SimplexSHX font so all canvas draws use it.
+     * Falls back silently if FontFaceSet APIs are not supported.
+     */
+    preloadSimplexFont() {
+        if (document && document.fonts && document.fonts.load) {
+            // Load a representative size; browser will fetch face once.
+            document.fonts.load('32px SimplexSHX').then(() => {
+                try { this.updatePreview(); } catch (_) {}
+            }).catch(() => {
+                // Even if the load promise rejects, try a delayed repaint.
+                setTimeout(() => { try { this.updatePreview(); } catch (_) {} }, 250);
+            });
+            // Safety repaint after longer delay in case font arrives late.
+            setTimeout(() => { try { this.updatePreview(); } catch (_) {} }, 1000);
+        }
     }
 
     // ----- History & Persistence -----
@@ -2858,7 +2878,7 @@ class LineTypeBuilder {
             
             // Draw side name
             ctx.fillStyle = 'black';
-            ctx.font = '12px Arial';
+            ctx.font = '12px SimplexSHX, monospace';
             const midX = (side.startX + side.endX) / 2;
             const midY = (side.startY + side.endY) / 2;
             ctx.fillText(side.name, midX, midY);
@@ -3139,7 +3159,7 @@ class LineTypeBuilder {
             
             // Label all four corners of the text box
             ctx.fillStyle = 'blue';
-            ctx.font = '12px Arial';
+            ctx.font = '12px SimplexSHX, monospace';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             
@@ -3358,7 +3378,7 @@ class LineTypeBuilder {
             
             // Draw side name
             ctx.fillStyle = 'black';
-            ctx.font = '12px Arial';
+            ctx.font = '12px SimplexSHX, monospace';
             const midX = (side.startX + side.endX) / 2;
             const midY = (side.startY + side.endY) / 2;
             ctx.fillText(side.name, midX, midY);
@@ -4565,8 +4585,8 @@ class LineTypeBuilder {
         }
         
         // Draw text indicator
-        ctx.fillStyle = 'rgba(255, 165, 0, 0.8)';
-        ctx.font = '12px Arial';
+    ctx.fillStyle = 'rgba(255, 165, 0, 0.8)';
+    ctx.font = '12px SimplexSHX, monospace';
         ctx.textAlign = 'center';
         ctx.fillText('Min radius: 0.8 units applied', centerX, centerY - actualRadius - 15);
         
