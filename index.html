@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,6 +12,11 @@
     <meta name="robots" content="index, follow">
     <meta name="language" content="English">
     <meta name="author" content="AutoCAD Line Type Builder">
+    <!-- Color scheme and theme color (adapts to system preference) -->
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#1e3d72">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f172a">
+    <meta id="dynamicThemeColor" name="theme-color" content="">
     
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
@@ -32,8 +37,11 @@
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     
-    <!-- Stylesheet -->
+    <!-- Stylesheets -->
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/theme-light.css">
+    <link rel="stylesheet" href="css/theme-dark.css">
+    <link rel="stylesheet" href="css/simplex-font.css">
     
     <!-- JSON-LD Structured Data -->
     <script type="application/ld+json">
@@ -65,7 +73,6 @@
                         <p>Create custom .lin files for AutoCAD line types</p>
                         <div class="toolbar-group">
                             <button class="toolbar-btn" onclick="toggleImportBar()">Import</button>
-                            <button id="helpOpenBtn" class="toolbar-btn" type="button">Help</button>
                             <div class="presets-dropdown" id="presetsDropdown">
                                 <button id="presetsBtn" class="toolbar-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="presetsMenu">
                                     Presets ▾
@@ -74,6 +81,7 @@
                                     <!-- Preset items populated from data/presets.json -->
                                 </div>
                             </div>
+                            <button id="helpOpenBtn" class="toolbar-btn" type="button">Help</button>
                         </div>
         </nav>
         <div class="import-bar" id="importBar" style="display: none;">
@@ -103,6 +111,11 @@
         <section class="design-section">
             <div class="section-header">
                 <h2>Design Elements</h2>
+                <div class="toolbar-group">
+                    <button id="undoBtn" class="toolbar-btn" type="button" title="Undo" disabled>Undo</button>
+                    <button id="redoBtn" class="toolbar-btn" type="button" title="Redo" disabled>Redo</button>
+                    <button id="resetBtn" class="toolbar-btn" type="button" title="Reset">Reset</button>
+                </div>
             </div>
             <div class="cards-container" id="cardsContainer">
                 <!-- Cards will be added dynamically with plus buttons -->
@@ -206,6 +219,7 @@
                         <li>AutoCAD Line style Tool</li>
                         <li>AutoCAD Line builder</li>
                         <li>AutoCAD Line Generator</li>
+                        <li>Custom Linetype</li>
 
                     </ul>
                 </div>
@@ -214,9 +228,21 @@
                     <p><strong>Keywords:</strong> AutoCAD linetype, .lin file generator, CAD line patterns, custom AutoCAD lines, dashed line creator, dotted line maker, AutoCAD tools, CAD utilities, technical drawing tools, Linetype generator, linetype creator, line style, line tool, style, tool, text, linetype with text, create linetype with text, autocad linetype builder, custom autocad linetype</p>
                 </div>
             </div>
-            
+            <!-- Theme toggle -->
+            <div class="theme-toggle" role="group" aria-label="Theme selection">
+                <label for="themeSelect">Theme:</label>
+                <select id="themeSelect" aria-label="Theme">
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                </select>
+            </div>
+
             <!-- Visible Copyright -->
             <p class="copyright">© 2025 AutoCAD Line Type Builder - Create Custom Line Types for AutoCAD</p>
+            <!-- GitHub link (visible, bottom center) -->
+            <div class="footer-github">
+                <a href="https://github.com/jonathonhavey/autocad-linetype-builder" target="_blank" rel="noopener" aria-label="View project on GitHub">View on GitHub</a>
+            </div>
         </div>
     </footer>
 

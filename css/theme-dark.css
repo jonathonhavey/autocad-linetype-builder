@@ -1,0 +1,190 @@
+/* Dark Theme - All colors as CSS custom properties */
+[data-theme="dark"] {
+  /* Global/Body */
+  --meta-color: #0f172a;
+  --body-bg: #0b1220;
+  --body-text: #e5e7eb;
+  --panel-bg: #0f172a;
+  --panel-shadow: rgba(0, 0, 0, 0.35);
+
+  /* Cards */
+  --card-bg: #0b1220;
+  --card-border: #45505f;
+  --cards-bg-container: #0b1220;
+  --card-hover-border: #60a5fa;
+  --card-drag-border: #22c55e;
+  --card-drag-bg: #0f172a;
+  --card-content: #cbd5e1;
+  --card-type-selector-text: #93c5fd;
+  --card-type-selector-hover: #60a5fa;
+  --card-header-border: #334155;
+  --drag-handle: #94a3b8;
+  --drag-handle-hover: #cbd5e1;
+  --drag-handle-text: #94a3b8;
+  --drag-indicator-bg: rgba(34, 197, 94, 0.9);
+    --label-text: #cbd5e1;
+
+  /* Header */
+  --header-bg-from: #0f1f3d;
+  --header-bg-to: #19325a;
+  --header-text: #f9fafb;
+  --section-header-text: #93c5fd;
+  --section-header-border: #334155;
+  --section-header-hover: #60a5fa;
+
+  /* Buttons - Primary/Success */
+  --primary-btn: #22c55e;
+  --primary-btn-hover: #16a34a;
+  --primary-btn-text: #ffffff;
+
+  /* Buttons - Secondary */
+  --secondary-btn: #6c757d;
+  --secondary-btn-hover: #5a6268;
+
+  /* Buttons - Danger */
+  --danger-btn: #dc3545;
+  --danger-btn-hover: #c82333;
+  --remove-btn-bg: #dc3545;
+  --remove-btn-hover: #c82333;
+
+  /* Buttons - Info */
+  --info-btn: #17a2b8;
+  --info-btn-hover: #138496;
+  --copy-btn-bg: #17a2b8;
+  --copy-btn-hover: #138496;
+
+  /* Toolbar Buttons */
+  --toolbar-btn: #334155;
+  --toolbar-btn-hover: #475569;
+  --toolbar-btn-text: #f8fafc;
+
+  /* Form Inputs */
+  --input-bg: #111827;
+  --input-border: #374151;
+  --input-border-focus: #60a5fa;
+  --input-text: #e5e7eb;
+
+  /* Selects */
+  --select-bg: #111827;
+  --select-text: #e5e7eb;
+  --select-border: #374151;
+
+  /* Number Controls */
+  --number-btn-bg: #0f172a;
+  --number-btn-hover-bg: #111827;
+  --number-btn-hover-color: #93c5fd;
+  --number-btn-hover: #111827;
+  --number-btn-active: #60a5fa;
+  --number-btn-text: #cbd5e1;
+
+  /* Links */
+  --link-text: #93c5fd;
+  --link-hover: #60a5fa;
+
+  /* Modals */
+  --modal-bg: #0f172a;
+  --modal-overlay: rgba(0, 0, 0, 0.65);
+  --modal-border: #1f2937;
+  --modal-text: #e5e7eb;
+  --modal-close-text: #94a3b8;
+  --modal-close-hover: #e2e8f0;
+
+  /* Help Menu */
+  --help-menu-bg: #111827;
+  --help-menu-border: #374151;
+  --help-menu-text: #e5e7eb;
+  --help-item-hover: #1f2937;
+
+  /* Symbol Menu */
+  --symbol-menu-bg: #0b1220;
+  --symbol-menu-border: #334155;
+  --symbol-menu-text: #cbd5e1;
+  --symbol-menu-shadow: rgba(0, 0, 0, 0.5);
+  --symbol-header-bg: #0f172a;
+  --symbol-header-border: #334155;
+  --symbol-item-bg: #0b1220;
+  --symbol-item-border: #334155;
+  --symbol-item-hover: #0b2548;
+  --symbol-item-hover-bg: #0b2548;
+  --symbol-item-hover-border: #60a5fa;
+  --symbol-item-hover-shadow: rgba(96, 165, 250, 0.2);
+  --symbol-btn-hover-border: #475569;
+
+  /* Zoom Controls */
+  --zoom-btn-bg: #0f172a;
+  --zoom-btn-border: #374151;
+  --zoom-btn-hover-border: #60a5fa;
+  --zoom-btn-hover-bg: #0b1220;
+
+  /* Shadows / Focus */
+  --focus-ring-shadow: rgba(96, 165, 250, 0.25);
+  --error-banner-shadow: rgba(220, 53, 69, 0.4);
+  --card-hover-shadow: rgba(96, 165, 250, 0.25);
+  --card-drag-shadow: rgba(34, 197, 94, 0.25);
+  --theme-select-focus-shadow: rgba(96,165,250,0.25);
+
+  /* Carets / Icons */
+  --select-caret-color: #e5e7eb;
+
+  /* Output Section */
+  --output-bg: #0b1220;
+  --output-border: #374151;
+  --output-text: #e5e7eb;
+  --output-error-bg: #1f1313;
+  --output-error-border: #ef4444;
+  --output-error-text: #fca5a5;
+
+  /* Import Bar */
+  --import-bar-bg: rgba(17, 24, 39, 0.95);
+  --import-bar-border: rgba(148, 163, 184, 0.2);
+  --import-bar-text: #cbd5e1;
+  --import-bar-close-btn-text: #cbd5e1;
+  --import-bar-close-btn-hover: rgba(255, 255, 255, 0.08);
+
+  /* Error Banner */
+  --error-banner-bg-from: #dc3545;
+  --error-banner-bg-to: #c82333;
+  --error-banner-text: #ffffff;
+
+  /* Expand Controls */
+  --expand-btn-bg: #2b3e64;
+  --expand-btn-hover: transparent;
+  --expand-btn-text: #e5e7eb;
+  --expand-panel-bg: transparent;
+
+  /* Helper Buttons */
+  --center-btn-bg: #fff3cd;
+  --center-btn-border: #ffc107;
+  --center-btn-text: #856404;
+  --format-btn-bg: #ffc107;
+  --format-btn-text: #ffffff;
+
+  /* Footer */
+  --footer-bg: #0b1220;
+  --footer-text: #e5e7eb;
+  --footer-h3: #93c5fd;
+  --footer-para: #cbd5e1;
+  --footer-h4: #fca5a5;
+  --footer-li: #94a3b8;
+  --footer-li-before: #93c5fd;
+  --footer-keywords-bg: #111827;
+  --copyright: #94a3b8;
+
+  /* Theme Toggle */
+  --theme-select-bg: #111827;
+  --theme-select-text: #e5e7eb;
+  --theme-select-border: #374151;
+  --theme-select-focus-border: #60a5fa;
+
+  /* Preview Canvas */
+  --preview-bg: #0b1220;
+  --preview-content: #e5e7eb;
+  --preview-grid-minor: rgba(255, 255, 255, 0.06);
+  --preview-grid-major: rgba(255, 255, 255, 0.12);
+  
+  /* Tooltips */
+  --tooltip-bg: #1f2937;
+  
+  /* Placeholders */
+  --placeholder-color: #6b7280;
+}

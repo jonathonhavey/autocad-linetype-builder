@@ -5,7 +5,7 @@ A web-based tool for creating custom .lin files for AutoCAD line types. Build li
 ## Features
 
 - **Visual Design Interface**: Create line types using design cards
-- **Real-time Preview**: See your line type pattern as you build (coming soon)
+- **Real-time Preview**: Live, theme-aware canvas preview with Light/Dark modes
 - **Multiple Element Types**: Support for dashes, dots, and text elements
 - **AutoCAD Compatible**: Generates proper .lin file format
 - **Export Options**: Copy code or download .lin files
@@ -15,13 +15,20 @@ A web-based tool for creating custom .lin files for AutoCAD line types. Build li
 
 ```
 autocad-linetype-builder/
-├── index.html          # Main application interface
+├── index.html             # Main application interface
 ├── css/
-│   └── style.css      # Application styling
+│   └── style.css         # Application styling
 ├── js/
-│   └── script.js      # Line type builder logic
-├── package.json       # Project dependencies
-└── README.md         # Project documentation
+│   └── script.js         # Line type builder logic
+├── data/
+│   ├── presets.json      # Sample presets
+│   └── symbols.json      # Symbol list for text elements
+├── robots.txt            # SEO robots directives
+├── sitemap.xml           # SEO sitemap
+├── google...html         # Google site verification file
+├── vercel.json           # Hosting config (optional)
+├── package.json          # Project dependencies
+└── README.md             # Project documentation
 ```
 
 ## How to Use
@@ -39,6 +46,11 @@ autocad-linetype-builder/
    - View the generated .lin code in real-time
    - Copy the code to clipboard
    - Download as a .lin file for use in AutoCAD
+
+## Theming
+
+- Toggle Light/Dark in the footer; default is Light
+- The preview grid and content adapt to the selected theme instantly
 
 ## Element Types
 
@@ -81,13 +93,13 @@ autocad-linetype-builder/
 ```bash
 npm start
 ```
-This will start a development server at `http://localhost:8080`
+This will start a development server at `http://127.0.0.1:8080` (or `http://localhost:8080`)
 
 #### Option 2: Using npm dev server
 ```bash
 npm run dev
 ```
-This will start a development server at `http://localhost:3000`
+This will start a development server at `http://127.0.0.1:3000`
 
 #### Option 3: Direct File Opening
 Simply open `index.html` in your web browser by double-clicking the file.
@@ -131,6 +143,6 @@ This project is licensed under the MIT License - see the package.json file for d
 ## Development Notes
 
 - Uses modern CSS Grid and Flexbox for layouts
-- Implements smooth scrolling and intersection observer APIs
+- Canvas-based preview renders grid and pattern each frame and on theme/resize changes
 - Mobile-first responsive design approach
 - Follows web accessibility best practices

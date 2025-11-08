@@ -1,5 +1,87 @@
 // Help dropdown and Presets logic
 document.addEventListener('DOMContentLoaded', function () {
+    // Theme toggle: system/light/dark
+    (function initThemeToggle() {
+        const THEME_KEY = 'ltb_theme_pref';
+        const themeSelect = document.getElementById('themeSelect');
+        const dynamicMeta = document.querySelector('meta#dynamicThemeColor');
+        const lightColor = '#1e3d72';
+        const darkColor = '#0f172a';
+
+        // System mode removed; we only support explicit light/dark.
+
+        const refreshPreview = () => {
+            if (window.lineTypeBuilder && typeof lineTypeBuilder.updatePreview === 'function') {
+                try {
+                    // Immediate repaint to reflect theme changes ASAP
+                    lineTypeBuilder.updatePreview();
+                } catch (_) {}
+                // Next-frame repaint after styles/layout settle
+                requestAnimationFrame(() => {
+                    try { lineTypeBuilder.updatePreview(); } catch (_) {}
+                });
+            }
+        };
+
+        function setDynamicThemeColor(color) {
+            if (!dynamicMeta) return;
+            dynamicMeta.setAttribute('content', color || '');
+        }
+
+        function applyTheme(pref) {
+            if (pref === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                setDynamicThemeColor(darkColor);
+            } else if (pref === 'light') {
+                document.documentElement.setAttribute('data-theme', 'light');
+                setDynamicThemeColor(lightColor);
+            } else {
+                // Fallback to dark if unknown
+                document.documentElement.setAttribute('data-theme', 'dark');
+                setDynamicThemeColor(darkColor);
+            }
+            // If the app is initialized, apply any custom theme tokens
+            if (window.lineTypeBuilder && typeof lineTypeBuilder.applyThemeTokens === 'function') {
+                try { lineTypeBuilder.applyThemeTokens(); } catch (_) {}
+            }
+        }
+
+        if (themeSelect) {
+            let stored = localStorage.getItem(THEME_KEY) || 'light';
+            if (stored === 'system') stored = 'light';
+            themeSelect.value = stored;
+            applyTheme(stored);
+            // Initial repaint to avoid stale preview after theme is applied
+            refreshPreview();
+            themeSelect.addEventListener('change', () => {
+                const pref = themeSelect.value;
+                localStorage.setItem(THEME_KEY, pref);
+                applyTheme(pref);
+                refreshPreview();
+            });
+        } else {
+            // No UI present, default to light
+            applyTheme('light');
+            refreshPreview();
+        }
+
+        // Also observe data-theme attribute changes (covers external toggles)
+        const observer = new MutationObserver((mutations) => {
+            for (const m of mutations) {
+                if (m.type === 'attributes' && m.attributeName === 'data-theme') {
+                    refreshPreview();
+                }
+            }
+        });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+        // Redraw on window resize as layout can change canvas size
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => refreshPreview(), 50);
+        });
+    })();
     // Help button (opens modal)
     const helpOpenBtn = document.getElementById('helpOpenBtn');
     if (helpOpenBtn) {
@@ -121,6 +203,16 @@ document.addEventListener('DOMContentLoaded', function () {
                 openPresets();
             }
         });
+        // Enable click toggling (previously only hover + keyboard worked)
+        presetsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (presetsDropdown.classList.contains('is-open')) {
+                closePresets();
+                presetsBtn.focus();
+            } else {
+                openPresets();
+            }
+        });
     }
             // (Old select-based presets logic removed — presets are handled by the custom dropdown code above)
                 // (Presets logic replaced by custom dropdown above)
@@ -130,7 +222,41 @@ class LineTypeBuilder {
     constructor() {
         this.elements = [];
         this.symbols = null; // Will be loaded from symbols.json
+        this.themeConfig = null; // Will be loaded from data/theme.json
+        // History
+        this.undoStack = [];
+        this.redoStack = [];
+        this.maxHistory = 100;
+        this.isRestoringHistory = false;
+        this._lastSnapshotStr = null;
         this.init();
+    }
+
+    // Determine effective theme (manual override via data-theme or system preference)
+    getThemeMode() {
+        const root = document.documentElement;
+        const pref = root.getAttribute('data-theme');
+        if (pref === 'dark') return 'dark';
+        if (pref === 'light') return 'light';
+        try {
+            return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        } catch (_) {
+            return 'light';
+        }
+    }
+
+    // Colors for preview rendering based on theme
+    getPreviewColors() {
+        // Read colors from CSS custom properties
+        const root = document.documentElement;
+        const computedStyle = getComputedStyle(root);
+        
+        return {
+            content: computedStyle.getPropertyValue('--preview-content').trim() || '#111111',
+            gridMinor: computedStyle.getPropertyValue('--preview-grid-minor').trim() || 'rgba(0,0,0,0.06)',
+            gridMajor: computedStyle.getPropertyValue('--preview-grid-major').trim() || 'rgba(0,0,0,0.12)',
+            bg: computedStyle.getPropertyValue('--preview-bg').trim() || '#ffffff'
+        };
     }
 
     init() {
@@ -189,18 +315,132 @@ class LineTypeBuilder {
             }
         });
         
-        // Load symbols from JSON file
+    // Load symbols from JSON file
         this.loadSymbols();
         
-        // Initialize with default elements
-        this.initializeDefaultElements();
+        // Initialize from autosave if available, otherwise default
+        const restored = this.tryRestoreAutoSave();
+        if (!restored) {
+            this.initializeDefaultElements();
+        }
         this.updateOutput();
         this.updatePreview();
-        
         // Set initial view to zoom extents
         setTimeout(() => {
             this.zoomExtents();
         }, 100); // Small delay to ensure canvas is ready
+
+        // Observe preview container size changes to keep canvas in sync
+        this.setupPreviewResizeObserver();
+    }
+
+    // ----- History & Persistence -----
+    getSnapshot() {
+        return {
+            elements: JSON.parse(JSON.stringify(this.elements)),
+            name: this.linetypeName ? this.linetypeName.value : '',
+            desc: this.linetypeDesc ? this.linetypeDesc.value : '',
+            currentShape: this.currentShape,
+            lineWeight: this.lineWeight,
+            zoomLevel: this.zoomLevel,
+            panX: this.panX,
+            panY: this.panY
+        };
+    }
+
+    applySnapshot(snap) {
+        if (!snap) return;
+        this.isRestoringHistory = true;
+        this.elements = JSON.parse(JSON.stringify(snap.elements || []));
+        if (this.linetypeName) this.linetypeName.value = snap.name || '';
+        if (this.linetypeDesc) this.linetypeDesc.value = snap.desc || '';
+        this.currentShape = snap.currentShape || 'line';
+        this.lineWeight = typeof snap.lineWeight === 'number' ? snap.lineWeight : this.lineWeight;
+        this.zoomLevel = typeof snap.zoomLevel === 'number' ? snap.zoomLevel : this.zoomLevel;
+        this.panX = typeof snap.panX === 'number' ? snap.panX : this.panX;
+        this.panY = typeof snap.panY === 'number' ? snap.panY : this.panY;
+        // Re-render UI
+        this.renderCards();
+        this.updateOutput();
+        this.updatePreview();
+        this.isRestoringHistory = false;
+    }
+
+    captureSnapshot() {
+        if (this.isRestoringHistory) return;
+        const snap = this.getSnapshot();
+        const str = JSON.stringify(snap);
+        if (this._lastSnapshotStr === str) return;
+        this.undoStack.push(snap);
+        if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+        this.redoStack = [];
+        this._lastSnapshotStr = str;
+        this.saveAutoSave(str);
+        this.updateHistoryButtons();
+    }
+
+    undo() {
+        if (this.undoStack.length <= 1) return;
+        const current = this.undoStack.pop();
+        this.redoStack.push(current);
+        const prev = this.undoStack[this.undoStack.length - 1];
+        this.applySnapshot(prev);
+        this._lastSnapshotStr = JSON.stringify(prev);
+        this.saveAutoSave(this._lastSnapshotStr);
+        this.updateHistoryButtons();
+    }
+
+    redo() {
+        if (this.redoStack.length === 0) return;
+        const next = this.redoStack.pop();
+        this.undoStack.push(next);
+        this.applySnapshot(next);
+        this._lastSnapshotStr = JSON.stringify(next);
+        this.saveAutoSave(this._lastSnapshotStr);
+        this.updateHistoryButtons();
+    }
+
+    reset() {
+        if (!confirm('Reset all design elements and start over?')) return;
+        this.elements = [];
+        if (this.linetypeName) this.linetypeName.value = '';
+        if (this.linetypeDesc) this.linetypeDesc.value = '';
+        this.initializeDefaultElements();
+        this.updateOutput();
+        this.updatePreview();
+        // Reset history and autosave
+        this.undoStack = [];
+        this.redoStack = [];
+        this._lastSnapshotStr = null;
+        this.captureSnapshot();
+        this.updateHistoryButtons();
+    }
+
+    updateHistoryButtons() {
+        const undoBtn = document.getElementById('undoBtn');
+        const redoBtn = document.getElementById('redoBtn');
+        if (undoBtn) undoBtn.disabled = !(this.undoStack.length > 1);
+        if (redoBtn) redoBtn.disabled = !(this.redoStack.length > 0);
+    }
+
+    saveAutoSave(str) {
+        try { localStorage.setItem('ltb_autosave_v1', str); } catch (e) {}
+    }
+
+    tryRestoreAutoSave() {
+        try {
+            const str = localStorage.getItem('ltb_autosave_v1');
+            if (!str) return false;
+            const snap = JSON.parse(str);
+            this.undoStack = [snap];
+            this.redoStack = [];
+            this._lastSnapshotStr = str;
+            this.applySnapshot(snap);
+            this.updateHistoryButtons();
+            return true;
+        } catch (e) {
+            return false;
+        }
     }
 
     async loadSymbols() {
@@ -261,48 +501,62 @@ class LineTypeBuilder {
         this.cardsContainer.innerHTML = `
             <div class="empty-state">
                 <p>No elements in line type</p>
-                <p>AutoCAD line types require a minimum of ${this.MIN_ELEMENTS} elements and maximum of ${this.MAX_ELEMENTS}</p>
-                <p>Available elements: Dash, Dot, Text</p>
+                <p>Pattern must have ${this.MIN_ELEMENTS}-${this.MAX_ELEMENTS} dots or dashes (text blocks not counted).</p>
+                <p>Available elements: Dash (visible or gap), Dot, Text. Text does not count toward pattern element limits.</p>
             </div>
         `;
+    }
+
+    // Pattern element helpers (dots and dashes; text excluded)
+    getPatternElementCount() {
+        return this.elements.filter(e => e.type === 'dot' || e.type === 'dash').length;
+    }
+
+    isPatternElement(el) {
+        return !!el && (el.type === 'dot' || el.type === 'dash');
     }
 
     // AutoCAD Line Type Validation Rules
     validateLineType() {
         const errors = [];
-        
-        // Rule 1: Must have elements
+        // Rule 1: Must have at least one element overall
         if (this.elements.length === 0) {
             errors.push("Line type must have at least one element");
             this.showPersistentError(errors[0]);
             return false;
         }
-        
-        // Rule 2: First element must be a visible dash
+
+        // Rule 2: First element can be a dot or a non-negative dash; cannot be text or a negative dash (gap)
         const firstElement = this.elements[0];
-        if (firstElement.type !== 'dash') {
-            errors.push("First element must be a dash (not dot or text)");
-        } else if (firstElement.value <= 0) {
-            errors.push("First element must be a visible dash (length > 0)");
+        if (firstElement.type === 'text') {
+            errors.push("First element cannot be text. Use a dot or a visible dash.");
+        } else if (firstElement.type === 'dash' && firstElement.value < 0) {
+            errors.push("First element dash cannot be negative (no gap). Use a dot or a non-negative dash.");
+        }
+
+        // Rule 3: Pattern element count (dots + dashes) must be within limits
+        const patternCount = this.getPatternElementCount();
+        if (patternCount < this.MIN_ELEMENTS) {
+            errors.push(`Pattern must have at least ${this.MIN_ELEMENTS} dots or dashes (text excluded).`);
+        } else if (patternCount > this.MAX_ELEMENTS) {
+            errors.push(`Pattern cannot exceed ${this.MAX_ELEMENTS} dots or dashes (text excluded).`);
         }
         
-        // Rule 3: No consecutive text elements
+        // Rule 4: No consecutive text elements
         for (let i = 0; i < this.elements.length - 1; i++) {
             if (this.elements[i].type === 'text' && this.elements[i + 1].type === 'text') {
                 errors.push("Text elements cannot be placed back-to-back. Add a dash, gap, or dot between text elements");
                 break;
             }
         }
-        
-        // Rule 4: No consecutive dots (dot,dot sequence)
+        // Rule 5: No consecutive dots (dot,dot sequence)
         for (let i = 0; i < this.elements.length - 1; i++) {
             if (this.elements[i].type === 'dot' && this.elements[i + 1].type === 'dot') {
                 errors.push("Dots cannot be placed back-to-back. Add a dash or gap between dots");
                 break;
             }
         }
-        
-        // Rule 5: No dot,text,dot sequences
+        // Rule 6: No dot,text,dot sequences
         for (let i = 0; i < this.elements.length - 2; i++) {
             if (this.elements[i].type === 'dot' && 
                 this.elements[i + 1].type === 'text' && 
@@ -336,8 +590,10 @@ class LineTypeBuilder {
 
 
     addElement(type) {
-        if (this.elements.length >= this.MAX_ELEMENTS) {
-            this.showNotification(`Maximum of ${this.MAX_ELEMENTS} elements allowed`);
+        // Enforce max only for pattern elements (dot or dash)
+        const willCount = (type === 'dot') || (type === 'dash');
+        if (willCount && this.getPatternElementCount() >= this.MAX_ELEMENTS) {
+            this.showNotification(`Maximum of ${this.MAX_ELEMENTS} dots or dashes reached (text excluded)`);
             return;
         }
 
@@ -508,6 +764,7 @@ class LineTypeBuilder {
                                        value="${element.value.text}" 
                                        class="text-input"
                                        onchange="lineTypeBuilder.updateTextProperty(${element.id}, 'text', this.value)"
+                                       oninput="lineTypeBuilder.updateTextPropertyFromDisplay(${element.id}, 'text', this.value)"
                                        placeholder="Enter text or use symbols below">
                             </div>
                         </div>
@@ -542,25 +799,27 @@ class LineTypeBuilder {
                                     <div class="number-input rotation-angle" style="display: flex">
                                         <input type="number" 
                                                value="${element.value.rotationAngle || 0}" 
-                                               step="0.1" 
+                                               step="1" 
                                                class="angle-input"
                                                onchange="lineTypeBuilder.updateTextProperty(${element.id}, 'rotationAngle', this.value)"
                                                oninput="lineTypeBuilder.updateTextProperty(${element.id}, 'rotationAngle', this.value)">
                                         <div class="number-buttons">
-                                            <button type="button" class="number-btn up-btn" onclick="lineTypeBuilder.incrementTextProperty(${element.id}, 'rotationAngle', 0.1)">▲</button>
-                                            <button type="button" class="number-btn down-btn" onclick="lineTypeBuilder.incrementTextProperty(${element.id}, 'rotationAngle', -0.1)">▼</button>
+                                            <button type="button" class="number-btn up-btn" onclick="lineTypeBuilder.incrementTextProperty(${element.id}, 'rotationAngle', 1)">▲</button>
+                                            <button type="button" class="number-btn down-btn" onclick="lineTypeBuilder.incrementTextProperty(${element.id}, 'rotationAngle', -1)">▼</button>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <button type="button" class="expand-btn" onclick="this.nextElementSibling.classList.toggle('expanded')">Position & Text Style</button>
+                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                            <button type="button" class="expand-btn" onclick="this.parentElement.nextElementSibling.classList.toggle('expanded')" style="flex: 1; margin: 0;">Position & Text Style</button>
+                            <button type="button" class="center-btn" onclick="lineTypeBuilder.centerText(${element.id})" title="Center text on line">Center</button>
+                        </div>
                         <div class="expandable-section">
                             <div class="control-group">
                                 <div class="offset-label-row">
                                     <label>Offset</label>
-                                    <button type="button" class="center-btn" onclick="lineTypeBuilder.centerText(${element.id})" title="Center text on line">Center</button>
                                 </div>
                                 <div class="offset-row">
                                     <div class="offset-group">
@@ -638,15 +897,17 @@ class LineTypeBuilder {
         plusBtn.innerHTML = '+';
         plusBtn.title = `Insert element at position ${insertPosition + 1}`;
         
-        // Disable if at maximum elements
-        if (this.elements.length >= this.MAX_ELEMENTS) {
+        const patternCount = this.getPatternElementCount();
+        if (patternCount >= this.MAX_ELEMENTS) {
             plusBtn.disabled = true;
-            plusBtn.title = `Maximum ${this.MAX_ELEMENTS} elements reached`;
+            plusBtn.title = `Maximum ${this.MAX_ELEMENTS} dots or dashes reached`;
         }
         
         plusBtn.addEventListener('click', () => {
-            if (this.elements.length < this.MAX_ELEMENTS) {
+            if (this.getPatternElementCount() < this.MAX_ELEMENTS) {
                 this.insertElement(insertPosition);
+            } else {
+                this.showNotification(`Maximum of ${this.MAX_ELEMENTS} dots or dashes reached (text excluded)`);
             }
         });
         
@@ -654,8 +915,8 @@ class LineTypeBuilder {
     }
 
     insertElement(position) {
-        if (this.elements.length >= this.MAX_ELEMENTS) {
-            this.showNotification(`Maximum of ${this.MAX_ELEMENTS} elements allowed`);
+        if (this.getPatternElementCount() >= this.MAX_ELEMENTS) {
+            this.showNotification(`Maximum of ${this.MAX_ELEMENTS} dots or dashes reached (text excluded)`);
             return;
         }
         
@@ -672,9 +933,13 @@ class LineTypeBuilder {
     }
 
     removeElement(id) {
-        // Prevent removing if it would go below minimum
-        if (this.elements.length <= this.MIN_ELEMENTS && this.elements.length > 0) {
-            this.showNotification(`Minimum of ${this.MIN_ELEMENTS} elements required`);
+        const idx = this.elements.findIndex(el => el.id === id);
+        if (idx === -1) return;
+        const el = this.elements[idx];
+        const patternCount = this.getPatternElementCount();
+        // Prevent removing pattern element if it would drop below minimum
+        if (this.isPatternElement(el) && patternCount <= this.MIN_ELEMENTS) {
+            this.showNotification(`At least ${this.MIN_ELEMENTS} dots or dashes required (text excluded)`);
             return;
         }
         
@@ -689,9 +954,19 @@ class LineTypeBuilder {
     changeElementType(id, newType) {
         const elementIndex = this.elements.findIndex(element => element.id === id);
         if (elementIndex !== -1) {
-            // Always allow the change
+            const el = this.elements[elementIndex];
+            const patternCountBefore = this.getPatternElementCount();
+            const currentlyCounts = this.isPatternElement(el);
+            const newValue = this.getDefaultValue(newType);
+            const willCountAfter = (newType === 'dot') || (newType === 'dash');
+            // If switching from non-count to count would exceed max, block
+            if (!currentlyCounts && willCountAfter && patternCountBefore >= this.MAX_ELEMENTS) {
+                this.showNotification(`Cannot change to ${newType}: maximum of ${this.MAX_ELEMENTS} dots or dashes reached`);
+                return;
+            }
+            // Apply change
             this.elements[elementIndex].type = newType;
-            this.elements[elementIndex].value = this.getDefaultValue(newType);
+            this.elements[elementIndex].value = newValue;
             this.renderCards();
             this.updateOutput();
             
@@ -1447,22 +1722,15 @@ class LineTypeBuilder {
         const fontSize = textValue.scale * 200 * 1.4; // Adjusted for actual text height
         
         // Map AutoCAD text styles to web fonts (approximation)
-        let fontFamily = 'Arial';
-        switch(textValue.style?.toUpperCase()) {
-            case 'ROMANS':
-            case 'ROMANTIC':
-                fontFamily = 'Times New Roman';
-                break;
-            case 'MONOTXT':
-                fontFamily = 'Courier New';
-                break;
-            case 'STANDARD':
-            default:
-                fontFamily = 'Arial';
-                break;
+        let style = (textValue.style || '').trim();
+        if (!style) style = 'STANDARD';
+        let fontFamily;
+        if (style.toLowerCase() === 'standard') {
+            fontFamily = 'SimplexSHX, monospace';
+        } else {
+            fontFamily = style;
         }
-        
-        ctx.font = `${fontSize}px ${fontFamily}`;
+    ctx.font = `${fontSize}px SimplexSHX, monospace`;
         
         // Convert Unicode codes to actual display characters before measuring
         const displayText = this.convertUnicodeForDisplay(textValue.text);
@@ -1482,25 +1750,50 @@ class LineTypeBuilder {
     }
 
     initPreviewCanvas() {
-        if (this.previewCanvas) return;
-        
         const previewContainer = document.querySelector('.preview-content');
         if (!previewContainer) return;
-        
-        // Create canvas element
-        this.previewCanvas = document.createElement('canvas');
-        this.previewCanvas.width = previewContainer.clientWidth;
-        this.previewCanvas.height = previewContainer.clientHeight;
-        this.previewCanvas.style.position = 'absolute';
-        this.previewCanvas.style.top = '0';
-        this.previewCanvas.style.left = '0';
-        this.previewCanvas.style.zIndex = '10';
-        this.previewCanvas.style.cursor = 'grab';
-        
-        // Add navigation event listeners
-        this.setupPreviewNavigation();
-        
-        previewContainer.appendChild(this.previewCanvas);
+
+        if (!this.previewCanvas) {
+            // Create canvas element
+            this.previewCanvas = document.createElement('canvas');
+            this.previewCanvas.style.position = 'absolute';
+            this.previewCanvas.style.top = '0';
+            this.previewCanvas.style.left = '0';
+            this.previewCanvas.style.zIndex = '10';
+            this.previewCanvas.style.cursor = 'grab';
+            previewContainer.appendChild(this.previewCanvas);
+            // Add navigation event listeners
+            this.setupPreviewNavigation();
+        }
+        // Always ensure canvas size matches container (handles theme/layout changes)
+        const w = previewContainer.clientWidth || 0;
+        const h = previewContainer.clientHeight || 0;
+        if (w > 0 && h > 0 && (this.previewCanvas.width !== w || this.previewCanvas.height !== h)) {
+            this.previewCanvas.width = w;
+            this.previewCanvas.height = h;
+        }
+    }
+
+    setupPreviewResizeObserver() {
+        try {
+            const container = document.querySelector('.preview-content');
+            if (!container || typeof ResizeObserver === 'undefined') return;
+            if (this._previewResizeObserver) {
+                this._previewResizeObserver.disconnect();
+            }
+            let rafPending = false;
+            this._previewResizeObserver = new ResizeObserver(() => {
+                if (rafPending) return;
+                rafPending = true;
+                requestAnimationFrame(() => {
+                    rafPending = false;
+                    this.updatePreview();
+                });
+            });
+            this._previewResizeObserver.observe(container);
+        } catch (e) {
+            // Ignore observer errors on unsupported environments
+        }
     }
 
     setupPreviewNavigation() {
@@ -1969,8 +2262,9 @@ class LineTypeBuilder {
     drawGrid(ctx, canvas) {
         // Grid represents AutoCAD units: each grid square = 0.1 units, rendered as 20px
         const gridSpacing = 20; // pixels per 0.1 unit
-        const gridColor = '#e0e0e0';
-        const majorGridColor = '#c0c0c0';
+        const colors = this.getPreviewColors();
+        const gridColor = colors.gridMinor;
+        const majorGridColor = colors.gridMajor;
         
         // Calculate visible area in transformed space
         const invZoom = 1 / this.zoomLevel;
@@ -2037,51 +2331,65 @@ class LineTypeBuilder {
         
         const ctx = this.previewCanvas.getContext('2d');
         const canvas = this.previewCanvas;
-        
-        // Clear canvas
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // Apply zoom and pan transformations
-        ctx.save();
-        ctx.translate(this.panX, this.panY);
-        ctx.scale(this.zoomLevel, this.zoomLevel);
-        
-        // Draw grid that transforms with view
-        this.drawGrid(ctx, canvas);
-        
-        if (this.elements.length === 0) {
-            ctx.restore();
+
+        // If canvas has no size yet (layout settling), try again next frame
+        if (!canvas.width || !canvas.height) {
+            requestAnimationFrame(() => this.updatePreview());
             return;
         }
         
-        // Calculate pattern dimensions
-        const patternLength = this.calculatePatternLength();
-        if (patternLength <= 0) return;
-        
-        // Grid scale: each grid square = 0.1 units, grid is 20px
-        const scale = 20 / 0.1; // 200 pixels per unit
-        
-        // Common properties
-        const lineThickness = this.lineWeight;
-        
-        // Render based on selected shape
-        switch (this.currentShape) {
-            case 'line':
-                this.renderLinePreview(ctx, canvas, patternLength, scale, lineThickness);
-                break;
-            case 'rectangle':
-                this.renderRectanglePreview(ctx, canvas, patternLength, scale, lineThickness);
-                break;
-            case 'circle':
-                this.renderCirclePreview(ctx, canvas, patternLength, scale, lineThickness);
-                break;
-            case 'triangle':
-                this.renderTrianglePreview(ctx, canvas, patternLength, scale, lineThickness);
-                break;
+        // Clear and paint background to ensure consistent contrast across themes
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const colorsBase = this.getPreviewColors();
+        if (colorsBase && colorsBase.bg) {
+            ctx.fillStyle = colorsBase.bg;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
         }
         
-        // Restore canvas transformation
-        ctx.restore();
+        // Apply zoom and pan transformations
+        ctx.save();
+        try {
+            ctx.translate(this.panX, this.panY);
+            ctx.scale(this.zoomLevel, this.zoomLevel);
+            
+            // Draw grid that transforms with view
+            this.drawGrid(ctx, canvas);
+            
+            if (this.elements.length === 0) {
+                return; // finally will restore
+            }
+            
+            // Calculate pattern dimensions
+            const patternLength = this.calculatePatternLength();
+            if (patternLength <= 0) {
+                return; // finally will restore
+            }
+            
+            // Grid scale: each grid square = 0.1 units, grid is 20px
+            const scale = 20 / 0.1; // 200 pixels per unit
+            
+            // Common properties
+            const lineThickness = this.lineWeight;
+            
+            // Render based on selected shape
+            switch (this.currentShape) {
+                case 'line':
+                    this.renderLinePreview(ctx, canvas, patternLength, scale, lineThickness);
+                    break;
+                case 'rectangle':
+                    this.renderRectanglePreview(ctx, canvas, patternLength, scale, lineThickness);
+                    break;
+                case 'circle':
+                    this.renderCirclePreview(ctx, canvas, patternLength, scale, lineThickness);
+                    break;
+                case 'triangle':
+                    this.renderTrianglePreview(ctx, canvas, patternLength, scale, lineThickness);
+                    break;
+            }
+        } finally {
+            // Ensure we always restore the context even on early returns
+            ctx.restore();
+        }
     }
 
     calculatePatternLength() {
@@ -2235,8 +2543,9 @@ class LineTypeBuilder {
     }
 
     drawPatternAlongCircle(ctx, centerX, centerY, radius, patternLength, scale, lineThickness, repetitions) {
-        ctx.strokeStyle = '#000';
-        ctx.fillStyle = '#000';
+        const colors = this.getPreviewColors();
+        ctx.strokeStyle = colors.content;
+        ctx.fillStyle = colors.content;
         ctx.lineWidth = lineThickness;
         
         const totalCircumference = 2 * Math.PI * radius;
@@ -2289,21 +2598,24 @@ class LineTypeBuilder {
                 const fontSize = textValue.scale * 200 * 1.4;
                 
                 // Set font
-                let fontFamily = 'Arial';
-                switch(textValue.style?.toUpperCase()) {
-                    case 'ROMANS':
-                    case 'ROMANTIC':
-                        fontFamily = 'Times New Roman';
-                        break;
-                    case 'MONOTXT':
-                        fontFamily = 'Courier New';
-                        break;
-                    default:
-                        fontFamily = 'Arial';
-                        break;
+                let style = (textValue.style || '').trim();
+                if (!style) style = 'STANDARD';
+                let fontFamily;
+                if (style.toLowerCase() === 'standard') {
+                    fontFamily = 'SimplexSHX, monospace';
+                } else {
+                    // If the user-typed font contains spaces or special chars, quote it
+                    if (/[^a-zA-Z0-9\-]/.test(style)) {
+                        fontFamily = `'${style}', sans-serif`;
+                    } else {
+                        fontFamily = `${style}, sans-serif`;
+                    }
+                    // Try to load the font before drawing (async, but improves reliability)
+                    if (document.fonts && document.fonts.load) {
+                        document.fonts.load(`${fontSize}px ${style}`);
+                    }
                 }
-                
-                ctx.font = `${fontSize}px ${fontFamily}`;
+                ctx.font = `${fontSize}px SimplexSHX, monospace`;
                 
                 // Calculate base position on circle
                 const baseX = centerX + radius * Math.cos(currentAngle);
@@ -2393,21 +2705,15 @@ class LineTypeBuilder {
                 const fontSize = textValue.scale * 200 * 1.4;
                 
                 // Set font
-                let fontFamily = 'Arial';
-                switch(textValue.style?.toUpperCase()) {
-                    case 'ROMANS':
-                    case 'ROMANTIC':
-                        fontFamily = 'Times New Roman';
-                        break;
-                    case 'MONOTXT':
-                        fontFamily = 'Courier New';
-                        break;
-                    default:
-                        fontFamily = 'Arial';
-                        break;
+                let style = (textValue.style || '').trim();
+                if (!style) style = 'STANDARD';
+                let fontFamily;
+                if (style.toLowerCase() === 'standard') {
+                    fontFamily = 'SimplexSHX, monospace';
+                } else {
+                    fontFamily = style;
                 }
-                
-                ctx.font = `${fontSize}px ${fontFamily}`;
+                ctx.font = `${fontSize}px SimplexSHX, monospace`;
                 ctx.textAlign = 'left';
                 ctx.textBaseline = 'alphabetic';
                 
@@ -2457,8 +2763,9 @@ class LineTypeBuilder {
     }
 
     drawNewRectangleFramework(ctx, centerX, centerY, width, height, patternLength, scale, lineThickness) {
-        ctx.strokeStyle = '#000';
-        ctx.fillStyle = '#000';
+        const colors = this.getPreviewColors();
+        ctx.strokeStyle = colors.content;
+        ctx.fillStyle = colors.content;
         ctx.lineWidth = lineThickness;
         
         // Calculate rectangle corners (upper left at 0,0)
@@ -2559,7 +2866,7 @@ class LineTypeBuilder {
         
         // Show thin baseline only when text guides are enabled
         if (this.showTextGuides) {
-            ctx.strokeStyle = '#000';
+            ctx.strokeStyle = colors.content;
             ctx.lineWidth = lineThickness / 4; // Thinner base line
             ctx.beginPath();
             ctx.moveTo(side.startX, side.startY);
@@ -2597,7 +2904,8 @@ class LineTypeBuilder {
                     const startPos = this.getPositionAlongRectSide(side, currentDistance, sideLength);
                     const endPos = this.getPositionAlongRectSide(side, endDistance, sideLength);
                     
-                    ctx.strokeStyle = '#000';
+                    const colors = this.getPreviewColors();
+                    ctx.strokeStyle = colors.content;
                     ctx.lineWidth = lineThickness;
                     ctx.beginPath();
                     ctx.moveTo(startPos.x, startPos.y);
@@ -2611,7 +2919,8 @@ class LineTypeBuilder {
                 const position = this.getPositionAlongRectSide(side, currentDistance, sideLength);
                 const dotRadius = lineThickness / 2;
                 
-                ctx.fillStyle = '#000';
+                const colorsDot = this.getPreviewColors();
+                ctx.fillStyle = colorsDot.content;
                 ctx.beginPath();
                 ctx.arc(position.x, position.y, dotRadius, 0, 2 * Math.PI);
                 ctx.fill();
@@ -2641,7 +2950,8 @@ class LineTypeBuilder {
                 const startPos = this.getPositionAlongRectSide(side, currentDistance, sideLength);
                 const endPos = this.getPositionAlongRectSide(side, endDistance, sideLength);
                 
-                ctx.strokeStyle = '#000';
+                const colorsFirst = this.getPreviewColors();
+                ctx.strokeStyle = colorsFirst.content;
                 ctx.lineWidth = lineThickness;
                 ctx.beginPath();
                 ctx.moveTo(startPos.x, startPos.y);
@@ -2654,7 +2964,8 @@ class LineTypeBuilder {
             const position = this.getPositionAlongRectSide(side, currentDistance, sideLength);
             const dotRadius = lineThickness / 2;
             
-            ctx.fillStyle = '#000';
+            const colorsDot = this.getPreviewColors();
+            ctx.fillStyle = colorsDot.content;
             ctx.beginPath();
             ctx.arc(position.x, position.y, dotRadius, 0, 2 * Math.PI);
             ctx.fill();
@@ -2681,23 +2992,17 @@ class LineTypeBuilder {
         const fontSize = textValue.scale * 200 * 1.4; // Match circle text scaling
         
         // Map AutoCAD text styles to web fonts
-        let fontFamily = 'Arial';
-        switch(textValue.style?.toUpperCase()) {
-            case 'ROMANS':
-            case 'ROMANTIC':
-                fontFamily = 'Times New Roman';
-                break;
-            case 'MONOTXT':
-                fontFamily = 'Courier New';
-                break;
-            case 'STANDARD':
-            default:
-                fontFamily = 'Arial';
-                break;
+        let style = (textValue.style || '').trim();
+        if (!style) style = 'STANDARD';
+        let fontFamily;
+        if (style.toLowerCase() === 'standard') {
+            fontFamily = 'SimplexSHX, monospace';
+        } else {
+            fontFamily = style;
         }
-        
-        ctx.font = `${fontSize}px ${fontFamily}`;
-        ctx.fillStyle = '#000';
+    ctx.font = `${fontSize}px SimplexSHX, monospace`;
+    const colorsTextRect = this.getPreviewColors();
+    ctx.fillStyle = colorsTextRect.content;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'alphabetic';
         
@@ -2754,7 +3059,7 @@ class LineTypeBuilder {
 
     drawTextInBox(ctx, x, y, boxRotation, textValue, scale, sideAngle = 0) {
         // Calculate text dimensions using plain text (converted from AutoCAD codes, no combining chars)
-        ctx.font = `${textValue.scale * 200 * 1.4}px Arial`;
+    ctx.font = `${textValue.scale * 200 * 1.4}px SimplexSHX, monospace`;
         const displayTextForMeasurement = this.convertUnicodeForCanvas(textValue.text);
         const textMetrics = ctx.measureText(displayTextForMeasurement);
         const textWidth = textMetrics.width;
@@ -2854,16 +3159,47 @@ class LineTypeBuilder {
         // Draw text content anchored to its specific corner of the text box
         ctx.rotate(textRotationInBox);
         
-        // Set text properties
-        ctx.fillStyle = '#000';
+    // Set text properties
+    const colorsText = this.getPreviewColors();
+    ctx.fillStyle = colorsText.content;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'alphabetic';
-        ctx.font = `${textValue.scale * 200 * 1.4}px Arial`;
+    ctx.font = `${textValue.scale * 200 * 1.4}px SimplexSHX, monospace`;
         
         // Position text at the anchor point
         // Convert Unicode codes to plain characters for canvas (no combining characters for underline)
         const displayText = this.convertUnicodeForCanvas(textValue.text);
-        ctx.fillText(displayText, textAnchorX, textAnchorY);
+
+        // Draw text per-character so we can adjust specific glyphs ("\\" and "|")
+        // that render taller in TTF than SHX. We scale those vertically to the cap height.
+        let cursorX = textAnchorX;
+        const capHeight = fontSize * 0.7; // target cap height used elsewhere
+        for (const ch of displayText) {
+            const m = ctx.measureText(ch);
+            const advance = m.width || 0;
+            if (ch === '\\' || ch === '|'|| ch === '/'|| ch === ')'|| ch === '('|| ch === '{'|| ch === '}'|| ch === '['|| ch === ']'|| ch === '$') {
+                // Prefer ascent-based scaling so the top aligns to cap height
+                const ascent = (typeof m.actualBoundingBoxAscent === 'number') ? m.actualBoundingBoxAscent : fontSize * 0.8;
+                const safeAscent = Math.max(1, ascent);
+                const sY = Math.min(.65, capHeight / safeAscent);
+                const sX = 0.65; // 65% of standard width
+                // Compute any small offset needed to exactly hit cap height when metrics are approximate
+                const targetTop = capHeight;
+                const scaledTop = safeAscent * sY;
+                const deltaTop = targetTop - scaledTop; // positive means we need to nudge up
+                ctx.save();
+                // Draw with horizontal + vertical scaling around the baseline and nudge so top meets cap-height
+                ctx.translate(cursorX, textAnchorY - deltaTop);
+                ctx.scale(sX, sY);
+                ctx.fillText(ch, 0, 0);
+                ctx.restore();
+                // Advance cursor by scaled width
+                cursorX += advance * sX;
+            } else {
+                ctx.fillText(ch, cursorX, textAnchorY);
+                cursorX += advance;
+            }
+        }
         
         // Draw formatting lines for formatted text
         const hasUnderscore = textValue.text.includes('%%U') || textValue.text.includes('\u0332');
@@ -2875,7 +3211,8 @@ class LineTypeBuilder {
             const textWidth = textMetrics.width;
             const fontSize = textValue.scale * 200 * 1.4;
             
-            ctx.strokeStyle = '#000';
+            const colorsFmt = this.getPreviewColors();
+            ctx.strokeStyle = colorsFmt.content;
             ctx.lineWidth = 1;
             
             // Draw underscore line (0.15 × scale below baseline)
@@ -2911,7 +3248,8 @@ class LineTypeBuilder {
 
     drawCornerConnectors(ctx, sides, lineThickness) {
         // Draw small connecting lines at corners to ensure visual continuity
-        ctx.strokeStyle = '#000';
+        const colors = this.getPreviewColors();
+        ctx.strokeStyle = colors.content;
         ctx.lineWidth = lineThickness;
         
         for (let i = 0; i < sides.length; i++) {
@@ -2941,8 +3279,9 @@ class LineTypeBuilder {
     }
 
     drawTriangleFramework(ctx, baseLength, height, patternLength, scale, lineThickness) {
-        ctx.strokeStyle = '#000';
-        ctx.fillStyle = '#000';
+        const colors = this.getPreviewColors();
+        ctx.strokeStyle = colors.content;
+        ctx.fillStyle = colors.content;
         ctx.lineWidth = lineThickness;
         
         // Define equilateral triangle vertices with bottom left at (0,0)
@@ -3027,7 +3366,7 @@ class LineTypeBuilder {
         
         // Show thin baseline only when text guides are enabled
         if (this.showTextGuides) {
-            ctx.strokeStyle = '#000';
+            ctx.strokeStyle = colors.content;
             ctx.lineWidth = lineThickness / 4; // Thinner base line
             ctx.beginPath();
             ctx.moveTo(side.startX, side.startY);
@@ -3065,7 +3404,8 @@ class LineTypeBuilder {
                     const startPos = this.getPositionAlongTriangleSide(side, currentDistance, sideLength);
                     const endPos = this.getPositionAlongTriangleSide(side, endDistance, sideLength);
                     
-                    ctx.strokeStyle = '#000';
+                    const colors = this.getPreviewColors();
+                    ctx.strokeStyle = colors.content;
                     ctx.lineWidth = lineThickness;
                     ctx.beginPath();
                     ctx.moveTo(startPos.x, startPos.y);
@@ -3079,7 +3419,8 @@ class LineTypeBuilder {
                 const position = this.getPositionAlongTriangleSide(side, currentDistance, sideLength);
                 const dotRadius = lineThickness / 2;
                 
-                ctx.fillStyle = '#000';
+                const colorsDot = this.getPreviewColors();
+                ctx.fillStyle = colorsDot.content;
                 ctx.beginPath();
                 ctx.arc(position.x, position.y, dotRadius, 0, 2 * Math.PI);
                 ctx.fill();
@@ -3109,7 +3450,8 @@ class LineTypeBuilder {
                 const startPos = this.getPositionAlongTriangleSide(side, currentDistance, sideLength);
                 const endPos = this.getPositionAlongTriangleSide(side, endDistance, sideLength);
                 
-                ctx.strokeStyle = '#000';
+                const colorsFirst = this.getPreviewColors();
+                ctx.strokeStyle = colorsFirst.content;
                 ctx.lineWidth = lineThickness;
                 ctx.beginPath();
                 ctx.moveTo(startPos.x, startPos.y);
@@ -3122,7 +3464,8 @@ class LineTypeBuilder {
             const position = this.getPositionAlongTriangleSide(side, currentDistance, sideLength);
             const dotRadius = lineThickness / 2;
             
-            ctx.fillStyle = '#000';
+            const colorsDot = this.getPreviewColors();
+            ctx.fillStyle = colorsDot.content;
             ctx.beginPath();
             ctx.arc(position.x, position.y, dotRadius, 0, 2 * Math.PI);
             ctx.fill();
@@ -3149,23 +3492,17 @@ class LineTypeBuilder {
         const fontSize = textValue.scale * 200 * 1.4;
         
         // Map AutoCAD text styles to web fonts
-        let fontFamily = 'Arial';
-        switch(textValue.style?.toUpperCase()) {
-            case 'ROMANS':
-            case 'ROMANTIC':
-                fontFamily = 'Times New Roman';
-                break;
-            case 'MONOTXT':
-                fontFamily = 'Courier New';
-                break;
-            case 'STANDARD':
-            default:
-                fontFamily = 'Arial';
-                break;
+        let style = (textValue.style || '').trim();
+        if (!style) style = 'STANDARD';
+        let fontFamily;
+        if (style.toLowerCase() === 'standard') {
+            fontFamily = 'SimplexSHX, monospace';
+        } else {
+            fontFamily = style;
         }
-        
-        ctx.font = `${fontSize}px ${fontFamily}`;
-        ctx.fillStyle = '#000';
+    ctx.font = `${fontSize}px SimplexSHX, monospace`;
+    const colorsTextTri = this.getPreviewColors();
+    ctx.fillStyle = colorsTextTri.content;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'alphabetic';
         
@@ -3367,8 +3704,9 @@ class LineTypeBuilder {
     drawPattern(ctx, startX, lineY, scale, lineThickness, isLastRepetition = false) {
         let currentX = startX;
         
-        ctx.strokeStyle = '#000';
-        ctx.fillStyle = '#000';
+        const colors = this.getPreviewColors();
+        ctx.strokeStyle = colors.content;
+        ctx.fillStyle = colors.content;
         ctx.lineWidth = lineThickness;
         
         for (const element of this.elements) {
@@ -3401,18 +3739,15 @@ class LineTypeBuilder {
                 const fontSize = textValue.scale * 200 * 1.4; // Adjusted for actual text height
                 
                 // Set font
-                let fontFamily = 'Arial';
-                switch(textValue.style?.toUpperCase()) {
-                    case 'ROMANS':
-                    case 'ROMANTIC':
-                        fontFamily = 'Times New Roman';
-                        break;
-                    case 'MONOTXT':
-                        fontFamily = 'Courier New';
-                        break;
+                let style = (textValue.style || '').trim();
+                if (!style) style = 'STANDARD';
+                let fontFamily;
+                if (style.toLowerCase() === 'standard') {
+                    fontFamily = 'SimplexSHX, monospace';
+                } else {
+                    fontFamily = style;
                 }
-                
-                ctx.font = `${fontSize}px ${fontFamily}`;
+                ctx.font = `${fontSize}px SimplexSHX, monospace`;
                 ctx.textAlign = 'left';
                 ctx.textBaseline = 'alphabetic';
                 
@@ -3480,18 +3815,15 @@ class LineTypeBuilder {
                 const fontSize = textValue.scale * 200 * 1.4; // Adjusted for actual text height
                 
                 // Set font
-                let fontFamily = 'Arial';
-                switch(textValue.style?.toUpperCase()) {
-                    case 'ROMANS':
-                    case 'ROMANTIC':
-                        fontFamily = 'Times New Roman';
-                        break;
-                    case 'MONOTXT':
-                        fontFamily = 'Courier New';
-                        break;
+                let style = (textValue.style || '').trim();
+                if (!style) style = 'STANDARD';
+                let fontFamily;
+                if (style.toLowerCase() === 'standard') {
+                    fontFamily = 'SimplexSHX, monospace';
+                } else {
+                    fontFamily = style;
                 }
-                
-                ctx.font = `${fontSize}px ${fontFamily}`;
+                ctx.font = `${fontSize}px SimplexSHX, monospace`;
                 ctx.textAlign = 'left';
                 ctx.textBaseline = 'alphabetic';
                 
@@ -3534,7 +3866,8 @@ class LineTypeBuilder {
             
             // Different precision for different properties
             if (property === 'rotationAngle') {
-                newValue = Math.round((currentValue + increment) * 10) / 10; // Round to 1 decimal
+                // Round current value to nearest integer first, then add increment
+                newValue = Math.round(currentValue) + increment;
             } else {
                 newValue = Math.round((currentValue + increment) * 100) / 100; // Round to 2 decimals
             }
@@ -3964,6 +4297,8 @@ class LineTypeBuilder {
         }
         
         this.updatePreview();
+        // Auto-capture history and persist
+        this.captureSnapshot();
     }
 
     copyCode() {
@@ -4252,8 +4587,8 @@ function buildHelpHTML() {
             '<ul>' +
                 '<li>Back to back text elements will display final text element</li>' +
                 '<li>No dot-dot or dot-text-dot sequences.</li>' +
-                '<li>Minimum of 2 elements, maximum of 12 elements.</li>' +
-                '<li>Linetypes must start with a visible dash.</li>' +
+                '<li>Minimum of 2 elements, maximum of 12 elements. Text elements do not count towards this cap.</li>' +
+                '<li>Linetypes must start with a visible dash or a Dot</li>' +
             '<p></p>'+
             '</ul>' +
         '</section>' +
@@ -4272,7 +4607,7 @@ function buildHelpHTML() {
             '<p> 3. Copy the generated .lin code and paste into an existing .lin file (.lin files are editable in notepad).</p>' +
             '<p> 4. Alternatively, download the .lin file and save to a safe folder on your pc.</p>' +
             '<p> 5. use the LINETYPE command to open the Linetype Manager. </p>'+
-            '<p> 6. Select the Load.. button, locate your .lin file, and chose your custom linetype .</p>' +
+            '<p> 6. Select the "Load" button, locate your .lin file, and chose your custom linetype .</p>' +
             '<p> </p>'+
         '</section>' +
         '<section>' +
@@ -4282,7 +4617,10 @@ function buildHelpHTML() {
                 '<li><a href="https://help.autodesk.com/view/ACD/2023/ENU/?guid=GUID-EF1DF0A9-2088-487C-8085-16FEE6425405" target="_blank" rel="noopener">Simple Linetype definitions</a></li>' +
                 '<li><a href="https://help.autodesk.com/view/ACD/2023/ENU/?guid=GUID-FEDCE7EB-4919-43AE-A54E-F3A293DD60CA" target="_blank" rel="noopener">Text in linetypes</a></li>' +
             '</ul>' +
-        '</section>'
+            '<p> </p>' + 
+            
+            'If a linetype created in this program does not match its rendered counterpart in AutoCAD, please visit <a href="https://github.com/jonathonhavey/autocad-linetype-builder/issues" target="blank" rel="nonopener">GitHub Issues Page</a>'+  
+        '<section>' 
     );
 }
 
@@ -4291,6 +4629,20 @@ let lineTypeBuilder;
 
 document.addEventListener('DOMContentLoaded', function() {
     lineTypeBuilder = new LineTypeBuilder();
+    // Expose globally so theme/system change handlers can trigger repaints reliably
+    try { window.lineTypeBuilder = lineTypeBuilder; } catch (_) {}
+    // Wire up history buttons
+    const undoBtn = document.getElementById('undoBtn');
+    const redoBtn = document.getElementById('redoBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    if (undoBtn) undoBtn.addEventListener('click', () => lineTypeBuilder.undo());
+    if (redoBtn) redoBtn.addEventListener('click', () => lineTypeBuilder.redo());
+    if (resetBtn) resetBtn.addEventListener('click', () => lineTypeBuilder.reset());
+    // Initialize buttons state
+    lineTypeBuilder.updateHistoryButtons();
+    // Ensure first paint uses final theme colors by forcing an immediate and next-frame repaint
+    try { lineTypeBuilder.updatePreview(); } catch (_) {}
+    requestAnimationFrame(() => { try { lineTypeBuilder.updatePreview(); } catch (_) {} });
 });
 
 // Global functions for HTML onclick handlers
